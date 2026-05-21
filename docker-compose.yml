@@ -1,0 +1,69 @@
+services:
+  whisper:
+    image: onerahmet/openai-whisper-asr-webservice:latest
+    ports:
+      - "9000:9000"
+    environment:
+      - ASR_MODEL=small         # tiny | base | small | medium | large
+      - ASR_ENGINE=openai_whisper
+    volumes:
+      - whisper-models:/root/.cache/whisper
+    # For NVIDIA GPU support, swap the image tag to :latest-gpu and uncomment:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    environment:
+      - OLLAMA_ORIGINS=*        # allow browser requests from any origin
+    # Start server, wait for it, pull model, keep serving.
+    # Uses full binary path (/bin/ollama) to avoid PATH issues in sh.
+    # Pull is a no-op when the model is already cached in the volume.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        /bin/ollama serve &
+        SERVE_PID=$!
+        echo "[ollama-init] waiting for server..."
+        until /bin/ollama list >/dev/null 2>&1; do sleep 2; done
+        echo "[ollama-init] pulling gemma3:1b..."
+        /bin/ollama pull gemma3:1b
+        echo "[ollama-init] model ready."
+        wait $SERVE_PID
+    healthcheck:
+      test: ["CMD", "/bin/ollama", "list"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 30s
+    # For NVIDIA GPU support uncomment:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  app:
+    build:
+      context: ./app
+    ports:
+      - "3000:80"
+    depends_on:
+      - whisper
+      - ollama
+
+volumes:
+  whisper-models:
+  ollama-data:
