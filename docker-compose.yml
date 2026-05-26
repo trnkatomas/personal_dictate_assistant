@@ -23,8 +23,8 @@ services:
       - "11434:11434"
     volumes:
       - ollama-data:/root/.ollama
-    environment:
-      - OLLAMA_ORIGINS=*        # allow browser requests from any origin
+    # OLLAMA_ORIGINS no longer needed — the SvelteKit server proxies to Ollama
+    # server-to-server, so the browser never talks to it directly.
     # Start server, wait for it, pull model, keep serving.
     # Uses full binary path (/bin/ollama) to avoid PATH issues in sh.
     # Pull is a no-op when the model is already cached in the volume.
@@ -59,7 +59,7 @@ services:
     build:
       context: ./app
     ports:
-      - "3000:80"
+      - "3000:3000"
     depends_on:
       - whisper
       - ollama

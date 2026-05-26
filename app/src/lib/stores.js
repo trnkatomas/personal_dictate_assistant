@@ -24,11 +24,11 @@ function persisted(key, initial) {
 // --- Persisted across page reloads ---
 
 export const settings = persisted('da:settings', {
-  whisperUrl: '/api/whisper',
-  ollamaUrl:  '/api/ollama',
-  ollamaModel: 'gemma3:1b',
+  whisperUrl:      'http://localhost:9000',   // upstream Whisper ASR base URL
+  ollamaUrl:       'http://localhost:11434',  // upstream Ollama base URL
+  ollamaModel:     'gemma3:1b',
   whisperLanguage: '',           // empty = auto-detect
-  whisperTask: 'transcribe'      // 'transcribe' | 'translate'
+  whisperTask:     'transcribe'  // 'transcribe' | 'translate'
 });
 
 export const prompt = persisted(

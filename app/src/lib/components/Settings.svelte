@@ -2,11 +2,12 @@
   import { settings, showSettings } from '$lib/stores.js';
 
   const DEFAULTS = {
-    whisperUrl: '/api/whisper',
-    ollamaUrl:  '/api/ollama',
-    ollamaModel: 'gemma3:1b',
+    whisperUrl:      'https://n9xft9yspaqujp-9000.proxy.runpod.net', //'http://localhost:9000',
+    ollamaUrl:       'http://localhost:11434',
+    ollamaModel:     'gemma3:1b',
     whisperLanguage: '',
-    whisperTask: 'transcribe'
+    whisperTask:     'transcribe',
+    whisperEncode:   'false',
   };
 
   function reset() {
@@ -33,13 +34,13 @@
 
       <div class="fields">
         <label>
-          <span>Whisper URL</span>
-          <input type="url" bind:value={$settings.whisperUrl} />
+          <span>Whisper URL <em>(upstream, e.g. http://localhost:9000 or a RunPod URL)</em></span>
+          <input type="url" bind:value={$settings.whisperUrl} placeholder="http://localhost:9000" />
         </label>
 
         <label>
-          <span>Ollama URL</span>
-          <input type="url" bind:value={$settings.ollamaUrl} />
+          <span>Ollama URL <em>(upstream, e.g. http://localhost:11434)</em></span>
+          <input type="url" bind:value={$settings.ollamaUrl} placeholder="http://localhost:11434" />
         </label>
 
         <label>
