@@ -26,7 +26,7 @@
     class="pane-body"
     bind:value={$rawText}
     placeholder="Raw transcription will appear here after recording…"
-    spellcheck="false"
+    spellcheck="true"
     aria-label="Raw transcription"
   ></textarea>
 </div>

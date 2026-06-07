@@ -2,7 +2,7 @@
   import { settings, showSettings } from '$lib/stores.js';
 
   const DEFAULTS = {
-    whisperUrl:      'https://n9xft9yspaqujp-9000.proxy.runpod.net', //'http://localhost:9000',
+    whisperUrl:      'https://n9xft9yspaqujp-9000.proxy.runpod.net',
     ollamaUrl:       'http://localhost:11434',
     ollamaModel:     'gemma3:1b',
     whisperLanguage: '',
@@ -10,8 +10,64 @@
     whisperEncode:   'false',
   };
 
+  const PRESETS = [
+    {
+      id:         'docker',
+      label:      'Docker Compose',
+      whisperUrl: 'http://whisper:9000',
+      ollamaUrl:  'http://ollama:11434',
+    },
+    {
+      id:         'local',
+      label:      'Local',
+      whisperUrl: 'http://localhost:9000',
+      ollamaUrl:  'http://localhost:11434',
+    },
+    {
+      id:         'external',
+      label:      'External',
+      whisperUrl: '',
+      ollamaUrl:  '',
+    },
+  ];
+
+  // What's shown in the URL inputs — starts from the saved store values.
+  // Selecting a preset updates these without touching the store.
+  // Apply commits them to the store.
+  let previewWhisperUrl = $settings.whisperUrl;
+  let previewOllamaUrl  = $settings.ollamaUrl;
+
+  let selectedPresetId = 'current';
+
+  function onPresetChange() {
+    if (selectedPresetId === 'current') {
+      // Snap preview back to whatever is actually saved
+      previewWhisperUrl = $settings.whisperUrl;
+      previewOllamaUrl  = $settings.ollamaUrl;
+    } else {
+      const preset = PRESETS.find(p => p.id === selectedPresetId);
+      if (preset) {
+        previewWhisperUrl = preset.whisperUrl;
+        previewOllamaUrl  = preset.ollamaUrl;
+      }
+    }
+  }
+
+  function applyPreset() {
+    settings.update(s => ({ ...s, whisperUrl: previewWhisperUrl, ollamaUrl: previewOllamaUrl }));
+    selectedPresetId = 'current';
+    // preview already matches the store — no further update needed
+  }
+
+  // Whether the preview differs from what's actually stored
+  $: isPreviewing = previewWhisperUrl !== $settings.whisperUrl
+                 || previewOllamaUrl  !== $settings.ollamaUrl;
+
   function reset() {
     settings.set({ ...DEFAULTS });
+    previewWhisperUrl = DEFAULTS.whisperUrl;
+    previewOllamaUrl  = DEFAULTS.ollamaUrl;
+    selectedPresetId  = 'current';
   }
 
   function close() {
@@ -33,16 +89,45 @@
       </div>
 
       <div class="fields">
-        <label>
-          <span>Whisper URL <em>(upstream, e.g. http://localhost:9000 or a RunPod URL)</em></span>
-          <input type="url" bind:value={$settings.whisperUrl} placeholder="http://localhost:9000" />
-        </label>
 
-        <label>
-          <span>Ollama URL <em>(upstream, e.g. http://localhost:11434)</em></span>
-          <input type="url" bind:value={$settings.ollamaUrl} placeholder="http://localhost:11434" />
-        </label>
+        <!-- ── Endpoint frame ── -->
+        <div class="endpoint-frame">
+          <span class="frame-title">Service endpoints</span>
 
+          <div class="preset-row">
+            <select bind:value={selectedPresetId} on:change={onPresetChange}>
+              <option value="current">Current</option>
+              {#each PRESETS as p}
+                <option value={p.id}>{p.label}</option>
+              {/each}
+            </select>
+            <button class="apply-btn" on:click={applyPreset} disabled={!isPreviewing}>
+              Apply
+            </button>
+          </div>
+
+          <label>
+            <span>Whisper URL</span>
+            <input
+              type="url"
+              bind:value={previewWhisperUrl}
+              placeholder="http://localhost:9000"
+              class:previewing={isPreviewing}
+            />
+          </label>
+
+          <label>
+            <span>Ollama URL</span>
+            <input
+              type="url"
+              bind:value={previewOllamaUrl}
+              placeholder="http://localhost:11434"
+              class:previewing={isPreviewing}
+            />
+          </label>
+        </div>
+
+        <!-- ── Other settings ── -->
         <label>
           <span>Ollama model</span>
           <input type="text" bind:value={$settings.ollamaModel} placeholder="llama3.2" />
@@ -60,6 +145,7 @@
             <option value="translate">Translate to English</option>
           </select>
         </label>
+
       </div>
 
       <div class="panel-footer">
@@ -90,7 +176,6 @@
     max-width: calc(100vw - 2rem);
     display: flex;
     flex-direction: column;
-    gap: 0;
     overflow: hidden;
   }
 
@@ -129,6 +214,66 @@
     padding: 1rem 1.25rem;
   }
 
+  /* ── Endpoint frame ── */
+  .endpoint-frame {
+    position: relative;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 1rem 0.85rem 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .frame-title {
+    position: absolute;
+    top: -0.55rem;
+    left: 0.65rem;
+    background: #1e293b;
+    padding: 0 0.3rem;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: #475569;
+  }
+
+  .preset-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .preset-row select {
+    flex: 1;
+  }
+
+  .apply-btn {
+    background: #1e3a5f;
+    border: 1px solid #2d5a8e;
+    border-radius: 6px;
+    color: #93c5fd;
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 0.4rem 0.85rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+    font-family: inherit;
+  }
+
+  .apply-btn:hover:not(:disabled) {
+    background: #1d4ed8;
+    border-color: #3b82f6;
+    color: #fff;
+  }
+
+  .apply-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+
+  /* ── Shared form elements ── */
   label {
     display: flex;
     flex-direction: column;
@@ -159,8 +304,13 @@
 
   input:focus, select:focus { border-color: #7c3aed; }
 
+  /* Subtle amber tint while showing an unapplied preview */
+  input.previewing { border-color: #92400e; }
+  input.previewing:focus { border-color: #f59e0b; }
+
   select option { background: #1e293b; }
 
+  /* ── Footer ── */
   .panel-footer {
     display: flex;
     justify-content: space-between;

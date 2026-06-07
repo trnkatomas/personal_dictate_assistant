@@ -46,3 +46,6 @@ export const rawText        = writable('');
 export const transformedText = writable('');
 export const showSettings   = writable(false);
 export const showDiff       = writable(false);
+
+// Unified endpoint error — { source: 'Whisper' | 'Ollama', message: string } | null
+export const endpointError  = writable(null);

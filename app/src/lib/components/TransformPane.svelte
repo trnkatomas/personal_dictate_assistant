@@ -1,13 +1,12 @@
 <script>
-  import { transformedText, prompt, isTransforming, rawText } from '$lib/stores.js';
+  import { transformedText, prompt, isTransforming, rawText, endpointError } from '$lib/stores.js';
   import { transform } from '$lib/api.js';
 
-  let error   = null;
-  let copied  = false;
+  let copied = false;
 
   async function handleTransform() {
     if (!$rawText.trim()) return;
-    error = null;
+    endpointError.set(null);
     transformedText.set('');
     isTransforming.set(true);
 
@@ -16,7 +15,7 @@
         transformedText.update((t) => t + token);
       }
     } catch (e) {
-      error = e.message;
+      endpointError.set({ source: 'Ollama', message: e.message });
     } finally {
       isTransforming.set(false);
     }
@@ -65,10 +64,6 @@
       Transform
     </button>
   </div>
-
-  {#if error}
-    <div class="error-bar">{error}</div>
-  {/if}
 
   <textarea
     class="pane-body"
@@ -172,16 +167,6 @@
   @keyframes spin {
     from { transform: rotate(0deg); }
     to   { transform: rotate(360deg); }
-  }
-
-  .error-bar {
-    padding: 0.4rem 0.85rem;
-    background: #2d0a0a;
-    border-left: 1px solid #334155;
-    border-right: 1px solid #334155;
-    color: #fca5a5;
-    font-size: 0.78rem;
-    flex-shrink: 0;
   }
 
   .pane-body {

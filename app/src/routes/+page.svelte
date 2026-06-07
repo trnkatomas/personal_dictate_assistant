@@ -8,23 +8,21 @@
 
   import {
     rawText, isTranscribing, isRecording,
-    showSettings, showDiff, audioBlob
+    showSettings, showDiff, audioBlob, endpointError
   } from '$lib/stores.js';
   import { transcribe } from '$lib/api.js';
-
-  let transcribeError = null;
 
   async function handleRecorded(e) {
     const blob = e.detail;
     audioBlob.set(blob);
-    transcribeError = null;
+    endpointError.set(null);
     isTranscribing.set(true);
 
     try {
       const text = await transcribe(blob);
       rawText.set(text);
     } catch (err) {
-      transcribeError = err.message;
+      endpointError.set({ source: 'Whisper', message: err.message });
     } finally {
       isTranscribing.set(false);
     }
@@ -75,10 +73,15 @@
   <!-- ── Recording section ───────────────────────────────── -->
   <section class="record-section">
     <Recorder on:recorded={handleRecorded} />
-    {#if transcribeError}
-      <div class="error-banner">{transcribeError}</div>
-    {/if}
   </section>
+
+  <!-- ── Unified endpoint error ─────────────────────────── -->
+  {#if $endpointError}
+    <div class="error-banner">
+      <span class="error-source">{$endpointError.source}</span>
+      {$endpointError.message}
+    </div>
+  {/if}
 
   <!-- ── Two panes / Diff (mutually exclusive) ──────────── -->
   <section class="panes">
@@ -144,13 +147,25 @@
   }
 
   .error-banner {
-    margin-top: 0.5rem;
     padding: 0.45rem 0.85rem;
     background: #2d0a0a;
     border: 1px solid #7f1d1d;
     border-radius: 6px;
     color: #fca5a5;
     font-size: 0.82rem;
+    flex-shrink: 0;
+    display: flex;
+    gap: 0.5rem;
+    align-items: baseline;
+  }
+
+  .error-source {
+    font-weight: 700;
+    font-size: 0.7rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #f87171;
+    white-space: nowrap;
   }
 
   /* Panes */
