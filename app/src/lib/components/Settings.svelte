@@ -3,11 +3,8 @@
 
   const DEFAULTS = {
     whisperUrl:      'https://n9xft9yspaqujp-9000.proxy.runpod.net',
-    ollamaUrl:       'http://localhost:11434',
-    ollamaModel:     'gemma3:1b',
     whisperLanguage: '',
     whisperTask:     'transcribe',
-    whisperEncode:   'false',
   };
 
   const PRESETS = [
@@ -15,27 +12,23 @@
       id:         'docker',
       label:      'Docker Compose',
       whisperUrl: 'http://whisper:9000',
-      ollamaUrl:  'http://ollama:11434',
     },
     {
       id:         'local',
       label:      'Local',
       whisperUrl: 'http://localhost:9000',
-      ollamaUrl:  'http://localhost:11434',
     },
     {
       id:         'external',
       label:      'External',
       whisperUrl: '',
-      ollamaUrl:  '',
     },
   ];
 
-  // What's shown in the URL inputs — starts from the saved store values.
-  // Selecting a preset updates these without touching the store.
-  // Apply commits them to the store.
+  // What's shown in the URL input — starts from the saved store value.
+  // Selecting a preset updates this without touching the store.
+  // Apply commits it to the store.
   let previewWhisperUrl = $settings.whisperUrl;
-  let previewOllamaUrl  = $settings.ollamaUrl;
 
   let selectedPresetId = 'current';
 
@@ -43,30 +36,26 @@
     if (selectedPresetId === 'current') {
       // Snap preview back to whatever is actually saved
       previewWhisperUrl = $settings.whisperUrl;
-      previewOllamaUrl  = $settings.ollamaUrl;
     } else {
       const preset = PRESETS.find(p => p.id === selectedPresetId);
       if (preset) {
         previewWhisperUrl = preset.whisperUrl;
-        previewOllamaUrl  = preset.ollamaUrl;
       }
     }
   }
 
   function applyPreset() {
-    settings.update(s => ({ ...s, whisperUrl: previewWhisperUrl, ollamaUrl: previewOllamaUrl }));
+    settings.update(s => ({ ...s, whisperUrl: previewWhisperUrl }));
     selectedPresetId = 'current';
     // preview already matches the store — no further update needed
   }
 
   // Whether the preview differs from what's actually stored
-  $: isPreviewing = previewWhisperUrl !== $settings.whisperUrl
-                 || previewOllamaUrl  !== $settings.ollamaUrl;
+  $: isPreviewing = previewWhisperUrl !== $settings.whisperUrl;
 
   function reset() {
     settings.set({ ...DEFAULTS });
     previewWhisperUrl = DEFAULTS.whisperUrl;
-    previewOllamaUrl  = DEFAULTS.ollamaUrl;
     selectedPresetId  = 'current';
   }
 
@@ -115,24 +104,9 @@
               class:previewing={isPreviewing}
             />
           </label>
-
-          <label>
-            <span>Ollama URL</span>
-            <input
-              type="url"
-              bind:value={previewOllamaUrl}
-              placeholder="http://localhost:11434"
-              class:previewing={isPreviewing}
-            />
-          </label>
         </div>
 
         <!-- ── Other settings ── -->
-        <label>
-          <span>Ollama model</span>
-          <input type="text" bind:value={$settings.ollamaModel} placeholder="llama3.2" />
-        </label>
-
         <label>
           <span>Whisper language <em>(leave blank to auto-detect)</em></span>
           <input type="text" bind:value={$settings.whisperLanguage} placeholder="e.g. en, de, cs" />

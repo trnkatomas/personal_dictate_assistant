@@ -14,9 +14,5 @@
     "svelte": "^5.0.0",
     "svelte-check": "^3.0.0",
     "vite": "^8.0.0"
-  },
-  "dependencies": {
-    "diff": "^5.2.0",
-    "diff2html": "^3.4.48"
   }
 }

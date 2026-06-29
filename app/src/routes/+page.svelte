@@ -1,14 +1,12 @@
 <script>
   import { onMount } from 'svelte';
-  import Recorder      from '$lib/components/Recorder.svelte';
-  import TranscriptPane from '$lib/components/TranscriptPane.svelte';
-  import TransformPane  from '$lib/components/TransformPane.svelte';
-  import DiffView       from '$lib/components/DiffView.svelte';
-  import Settings       from '$lib/components/Settings.svelte';
+  import Recorder       from '$lib/components/Recorder.svelte';
+  import TranscriptPane  from '$lib/components/TranscriptPane.svelte';
+  import Settings        from '$lib/components/Settings.svelte';
 
   import {
     rawText, isTranscribing, isRecording,
-    showSettings, showDiff, audioBlob, endpointError
+    showSettings, audioBlob, endpointError
   } from '$lib/stores.js';
   import { transcribe } from '$lib/api.js';
 
@@ -54,14 +52,6 @@
     <div class="topbar-actions">
       <button
         class="tool-btn"
-        class:active={$showDiff}
-        on:click={() => showDiff.update((v) => !v)}
-        title="Toggle diff view"
-      >
-        ⟷ Diff
-      </button>
-      <button
-        class="tool-btn"
         on:click={() => showSettings.set(true)}
         title="Open settings"
       >
@@ -83,15 +73,9 @@
     </div>
   {/if}
 
-  <!-- ── Two panes / Diff (mutually exclusive) ──────────── -->
+  <!-- ── Transcript pane ──────────────────────────────────── -->
   <section class="panes">
-    {#if $showDiff}
-      <DiffView />
-    {:else}
-      <TranscriptPane />
-      <div class="divider"></div>
-      <TransformPane />
-    {/if}
+    <TranscriptPane />
   </section>
 </div>
 
@@ -103,7 +87,7 @@
     padding: 0.75rem;
     gap: 0.75rem;
     box-sizing: border-box;
-    max-width: 1440px;
+    max-width: 900px;
     margin: 0 auto;
   }
 
@@ -139,7 +123,6 @@
   }
 
   .tool-btn:hover  { background: #334155; color: #e2e8f0; }
-  .tool-btn.active { background: #334155; color: #e2e8f0; border-color: #475569; }
 
   /* Record section */
   .record-section {
@@ -174,12 +157,5 @@
     flex: 1;
     min-height: 0;
     gap: 0;
-  }
-
-  .divider {
-    width: 1px;
-    background: #1e293b;
-    margin: 0 0.5rem;
-    flex-shrink: 0;
   }
 </style>

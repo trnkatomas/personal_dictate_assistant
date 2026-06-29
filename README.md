@@ -1,9 +1,9 @@
 # Dictate Assistant
 
-Local, privacy-first voice transcription with LLM cleanup.
+Local, privacy-first voice transcription.
 
 ```
-Browser → Whisper ASR (speech-to-text) → Ollama (grammar / punctuation fix)
+Browser → Whisper ASR (speech-to-text)
 ```
 
 Everything runs locally via Docker Compose — no cloud, no data leaves your machine.
@@ -18,19 +18,10 @@ Everything runs locally via Docker Compose — no cloud, no data leaves your mac
 docker compose up -d
 ```
 
-First run downloads the Whisper model weights and the Ollama image.
-Both are cached in named volumes so subsequent starts are instant.
+First run downloads the Whisper model weights. They're cached in a named
+volume so subsequent starts are instant.
 
-### 2. Pull an Ollama model
-
-```bash
-docker exec -it dictate-assistant-ollama-1 ollama pull gemma3:1b
-```
-
-Any model listed on <https://ollama.com/library> works. Smaller = faster on CPU.
-Good choices: `gemma3:1b` (default), `gemma4:4b`, `llama3.2`, `phi4-mini`.
-
-### 3. Open the app
+### 2. Open the app
 
 <http://localhost:3000>
 
@@ -42,12 +33,9 @@ Good choices: `gemma3:1b` (default), `gemma4:4b`, `llama3.2`, `phi4-mini`.
 |------|--------|
 | 1 | Click **Record** (or press **Space**) and speak |
 | 2 | Click **Stop** — audio is sent to Whisper automatically |
-| 3 | Raw transcription appears in the left pane (editable) |
-| 4 | Edit the prompt if needed, then click **Transform ↗** |
-| 5 | Cleaned text streams into the right pane |
-| 6 | Click **⟷ Diff** to see exactly what the LLM changed |
+| 3 | Transcription appears in the pane below (editable) |
 
-All settings (API URLs, model name, prompt, language) are persisted in
+All settings (Whisper URL, language) are persisted in
 `localStorage` — they survive page reloads.
 
 ---
@@ -57,23 +45,22 @@ All settings (API URLs, model name, prompt, language) are persisted in
 Open ⚙ **Settings** in the top-right corner.
 
 The **Service endpoints** section has three built-in presets. Select one from
-the dropdown — the URL fields immediately preview the values — then click
+the dropdown — the URL field immediately previews the value — then click
 **Apply** to commit. Pick **Current** to discard the preview and revert to
 whatever is saved.
 
-| Preset | Whisper URL | Ollama URL |
-|--------|-------------|------------|
-| Docker Compose | `http://whisper:9000` | `http://ollama:11434` |
-| Local | `http://localhost:9000` | `http://localhost:11434` |
-| External | *(clear — enter your own)* | *(clear — enter your own)* |
+| Preset | Whisper URL |
+|--------|-------------|
+| Docker Compose | `http://whisper:9000` |
+| Local | `http://localhost:9000` |
+| External | *(clear — enter your own)* |
 
-> **Note:** these URLs are resolved by the SvelteKit server, not the browser.
-> Use Docker service names (e.g. `whisper`) when the app itself runs in Docker Compose,
+> **Note:** this URL is resolved by the SvelteKit server, not the browser.
+> Use the Docker service name (`whisper`) when the app itself runs in Docker Compose,
 > and `localhost` when running the dev server directly on your machine.
 
 | Setting | Default | Notes |
 |---------|---------|-------|
-| Ollama model | `gemma3:1b` | Must be pulled first (see step 2) |
 | Language | *(auto)* | ISO 639-1 code, e.g. `en`, `de`, `cs` |
 | Task | Transcribe | Switch to *Translate* to get English output |
 
@@ -131,10 +118,8 @@ services:
 Then add matching presets in `Settings.svelte`:
 
 ```js
-{ id: 'docker-small', label: 'Docker — Whisper small',
-  whisperUrl: 'http://whisper-small:9000', ollamaUrl: 'http://ollama:11434' },
-{ id: 'docker-large', label: 'Docker — Whisper large',
-  whisperUrl: 'http://whisper-large:9000', ollamaUrl: 'http://ollama:11434' },
+{ id: 'docker-small', label: 'Docker — Whisper small', whisperUrl: 'http://whisper-small:9000' },
+{ id: 'docker-large', label: 'Docker — Whisper large', whisperUrl: 'http://whisper-large:9000' },
 ```
 
 Model switching becomes instant — just pick a preset and click **Apply**.
@@ -159,14 +144,14 @@ npm run dev
 ```
 
 The dev server starts on <http://localhost:5173>.  
-Make sure Whisper and Ollama are already running:
+Make sure Whisper is already running:
 
 ```bash
-docker compose up whisper ollama -d
+docker compose up whisper -d
 ```
 
-In the app's Settings, use the **Local** preset so the URLs point at
-`localhost` (where the services are port-forwarded from Docker).
+In the app's Settings, use the **Local** preset so the URL points at
+`localhost` (where the service is port-forwarded from Docker).
 
 ---
 
@@ -175,7 +160,6 @@ In the app's Settings, use the **Local** preset so the URLs point at
 ```
 docker-compose.yml
 ├── whisper   onerahmet/openai-whisper-asr-webservice  :9000
-├── ollama    ollama/ollama                            :11434
 └── app       SvelteKit Node server                    :3000
 
 app/
@@ -184,16 +168,13 @@ app/
 │   │   ├── server/
 │   │   │   └── proxy.js           — server-side proxy helper (avoids CORS)
 │   │   ├── stores.js              — Svelte stores (persisted to localStorage)
-│   │   ├── api.js                 — fetch wrappers for Whisper & Ollama
+│   │   ├── api.js                 — fetch wrapper for Whisper
 │   │   └── components/
 │   │       ├── Recorder.svelte         — mic + live waveform canvas
-│   │       ├── TranscriptPane.svelte   — left pane (raw text)
-│   │       ├── TransformPane.svelte    — right pane (prompt + streaming output)
-│   │       ├── DiffView.svelte         — jsdiff + diff2html word-level diff
+│   │       ├── TranscriptPane.svelte   — transcription pane (editable)
 │   │       └── Settings.svelte         — modal settings panel with presets
 │   └── routes/
 │       ├── api/whisper/[...path]/+server.js  — proxy → Whisper
-│       ├── api/ollama/[...path]/+server.js   — proxy → Ollama
 │       └── +page.svelte                      — main page
 └── Dockerfile   — multi-stage: node build → node serve
 ```
@@ -201,9 +182,17 @@ app/
 ### Request flow
 
 The browser always talks to the SvelteKit server on the same origin.
-The server proxies requests to Whisper and Ollama using the URL configured
-in Settings, which is sent as an `X-Proxy-Target` header. This means:
+The server proxies requests to Whisper using the URL configured in Settings,
+which is sent as an `X-Proxy-Target` header. This means:
 
-- No CORS issues regardless of where the upstream services run
-- Upstream URLs are changed at runtime through the Settings UI — no rebuild needed
+- No CORS issues regardless of where the upstream service runs
+- Upstream URL is changed at runtime through the Settings UI — no rebuild needed
 - The URL must be reachable from the **server** (inside Docker), not the browser
+
+---
+
+## Desktop app (in progress)
+
+This project is being migrated to a native Wails (Go + webview) desktop app —
+see `desktop/` once it lands, and `CLAUDE-whisper-setup.md` for the rationale.
+The web app above will eventually be replaced by it.
