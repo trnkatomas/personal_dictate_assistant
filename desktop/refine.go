@@ -24,20 +24,16 @@ func (a *App) Refine(text string, s Settings) (string, error) {
 
 	endpoint := strings.TrimRight(s.RefinementURL, "/") + "/chat/completions"
 
+	prompt := s.RefinementPrompt
+	if prompt == "" {
+		prompt = defaultRefinementPrompt
+	}
+
 	payload, err := json.Marshal(map[string]any{
 		"model": s.RefinementModel,
 		"messages": []map[string]string{
-			{
-				"role": "system",
-				"content": "You are a transcription editor. Fix punctuation, " +
-					"capitalisation, and obvious speech-to-text artifacts. Keep the " +
-					"original language, tone, and meaning unchanged. Return only the " +
-					"corrected text — no explanations, no preamble.",
-			},
-			{
-				"role":    "user",
-				"content": text,
-			},
+			{"role": "system", "content": prompt},
+			{"role": "user", "content": text},
 		},
 		"stream": false,
 	})

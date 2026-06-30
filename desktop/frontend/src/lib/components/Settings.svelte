@@ -10,6 +10,9 @@
     refinementEnabled: false,
     refinementUrl:     'http://localhost:11434/v1',
     refinementModel:   'qwen3:1.7b',
+    refinementPrompt:  'Fix punctuation, capitalisation, and obvious speech-to-text artifacts. ' +
+                        'Keep the original language, tone, and meaning unchanged. Return only ' +
+                        'the corrected text — no explanations, no preamble.',
   };
 
   const PRESETS = [

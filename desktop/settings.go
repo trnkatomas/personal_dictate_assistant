@@ -9,6 +9,10 @@ import (
 const settingsAppDirName = "dictate-assistant"
 const settingsFileName = "settings.json"
 
+const defaultRefinementPrompt = "Fix punctuation, capitalisation, and obvious speech-to-text " +
+	"artifacts. Keep the original language, tone, and meaning unchanged. Return only the " +
+	"corrected text — no explanations, no preamble."
+
 func defaultSettings() Settings {
 	return Settings{
 		Mode:              "integrated",
@@ -19,6 +23,7 @@ func defaultSettings() Settings {
 		RefinementEnabled: false,
 		RefinementURL:     "http://localhost:11434/v1",
 		RefinementModel:   "qwen3:1.7b",
+		RefinementPrompt:  defaultRefinementPrompt,
 	}
 }
 
@@ -60,6 +65,10 @@ func loadSettings() (Settings, error) {
 	// using HTTP mode, so treat missing mode as "http" rather than "integrated".
 	if s.Mode == "" {
 		s.Mode = "http"
+	}
+	// Migrate settings written before refinementPrompt existed.
+	if s.RefinementPrompt == "" {
+		s.RefinementPrompt = defaultRefinementPrompt
 	}
 	return s, nil
 }

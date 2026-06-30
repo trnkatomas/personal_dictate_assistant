@@ -9,6 +9,7 @@ export namespace main {
 	    refinementEnabled: boolean;
 	    refinementUrl: string;
 	    refinementModel: string;
+	    refinementPrompt: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -24,6 +25,7 @@ export namespace main {
 	        this.refinementEnabled = source["refinementEnabled"];
 	        this.refinementUrl = source["refinementUrl"];
 	        this.refinementModel = source["refinementModel"];
+	        this.refinementPrompt = source["refinementPrompt"];
 	    }
 	}
 	export class SetupState {

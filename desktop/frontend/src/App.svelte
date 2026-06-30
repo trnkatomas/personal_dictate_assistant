@@ -3,28 +3,17 @@
   import { onMount } from 'svelte';
   import Recorder       from '$lib/components/Recorder.svelte';
   import TranscriptPane from '$lib/components/TranscriptPane.svelte';
+  import RefinementPane from '$lib/components/RefinementPane.svelte';
+  import DiffView       from '$lib/components/DiffView.svelte';
   import Settings       from '$lib/components/Settings.svelte';
   import Wizard         from '$lib/components/Wizard.svelte';
 
   import {
-    settings, rawText, refinedText, isTranscribing, isRefining, isRecording,
-    showSettings, showWizard, audioBlob, endpointError,
+    settings, rawText, refinedText, isTranscribing, isRecording,
+    showSettings, showWizard, showDiff, audioBlob, endpointError,
     initSettings
   } from '$lib/stores.js';
-  import { transcribe, refine, openAndTranscribeFile, checkSetupState } from '$lib/api.js';
-
-  // Shared post-transcription flow: optional refinement.
-  async function afterTranscribe(text) {
-    if (!$settings.refinementEnabled || !text) return;
-    isRefining.set(true);
-    try {
-      refinedText.set(await refine(text));
-    } catch (err) {
-      endpointError.set({ source: 'Refinement', message: err?.message ?? String(err) });
-    } finally {
-      isRefining.set(false);
-    }
-  }
+  import { transcribe, openAndTranscribeFile, checkSetupState } from '$lib/api.js';
 
   // Called when the Recorder component finishes a mic recording.
   async function handleRecorded(e) {
@@ -34,9 +23,7 @@
     refinedText.set('');
     isTranscribing.set(true);
     try {
-      const text = await transcribe(blob, mimeType);
-      rawText.set(text);
-      await afterTranscribe(text);
+      rawText.set(await transcribe(blob, mimeType));
     } catch (err) {
       endpointError.set({ source: 'Whisper', message: err?.message ?? String(err) });
     } finally {
@@ -51,10 +38,7 @@
     isTranscribing.set(true);
     try {
       const text = await openAndTranscribeFile();
-      if (text) {
-        rawText.set(text);
-        await afterTranscribe(text);
-      }
+      if (text) rawText.set(text);
     } catch (err) {
       endpointError.set({ source: 'Whisper', message: err?.message ?? String(err) });
     } finally {
@@ -75,9 +59,7 @@
     refinedText.set('');
     isTranscribing.set(true);
     try {
-      const text = await transcribe(file, file.type || 'audio/webm');
-      rawText.set(text);
-      await afterTranscribe(text);
+      rawText.set(await transcribe(file, file.type || 'audio/webm'));
     } catch (err) {
       endpointError.set({ source: 'Whisper', message: err?.message ?? String(err) });
     } finally {
@@ -119,6 +101,7 @@
   <!-- svelte-ignore a11y-no-static-element-interactions -->
   <div class="layout"
     class:drag-over={dragging}
+    class:wide={$settings.refinementEnabled}
     on:dragover={onDragOver}
     on:dragleave={onDragLeave}
     on:drop={onDrop}
@@ -127,6 +110,16 @@
     <header class="topbar">
       <span class="app-name">🎙 Dictate</span>
       <div class="topbar-actions">
+        {#if $settings.refinementEnabled}
+          <button
+            class="tool-btn"
+            class:active={$showDiff}
+            on:click={() => showDiff.update((v) => !v)}
+            title="Toggle diff view"
+          >
+            ⟷ Diff
+          </button>
+        {/if}
         <button
           class="tool-btn"
           on:click={() => showSettings.set(true)}
@@ -165,9 +158,17 @@
       </div>
     {/if}
 
-    <!-- ── Transcript pane ──────────────────────────────────── -->
+    <!-- ── Transcript / refinement panes (or diff) ───────────── -->
     <section class="panes">
-      <TranscriptPane />
+      {#if $settings.refinementEnabled && $showDiff}
+        <DiffView />
+      {:else if $settings.refinementEnabled}
+        <TranscriptPane />
+        <div class="divider"></div>
+        <RefinementPane />
+      {:else}
+        <TranscriptPane />
+      {/if}
     </section>
   </div>
 {/if}
@@ -182,6 +183,11 @@
     box-sizing: border-box;
     max-width: 900px;
     margin: 0 auto;
+    transition: max-width 0.15s;
+  }
+
+  .layout.wide {
+    max-width: 1440px;
   }
 
   /* Top bar */
@@ -216,6 +222,7 @@
   }
 
   .tool-btn:hover  { background: #334155; color: #e2e8f0; }
+  .tool-btn.active { background: #334155; color: #e2e8f0; border-color: #475569; }
 
   /* Record section */
   .record-section {
@@ -299,5 +306,12 @@
     flex: 1;
     min-height: 0;
     gap: 0;
+  }
+
+  .divider {
+    width: 1px;
+    background: #1e293b;
+    margin: 0 0.5rem;
+    flex-shrink: 0;
   }
 </style>
