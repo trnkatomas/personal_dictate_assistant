@@ -6,6 +6,9 @@ export namespace main {
 	    whisperLanguage: string;
 	    whisperTask: string;
 	    modelName: string;
+	    refinementEnabled: boolean;
+	    refinementUrl: string;
+	    refinementModel: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -18,6 +21,9 @@ export namespace main {
 	        this.whisperLanguage = source["whisperLanguage"];
 	        this.whisperTask = source["whisperTask"];
 	        this.modelName = source["modelName"];
+	        this.refinementEnabled = source["refinementEnabled"];
+	        this.refinementUrl = source["refinementUrl"];
+	        this.refinementModel = source["refinementModel"];
 	    }
 	}
 	export class SetupState {

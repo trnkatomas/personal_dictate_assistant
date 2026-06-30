@@ -1,6 +1,6 @@
 import { get } from 'svelte/store';
 import { settings } from './stores.js';
-import { Transcribe, GetSetupState } from '../../wailsjs/go/main/App';
+import { Transcribe, Refine, GetSetupState } from '../../wailsjs/go/main/App';
 
 /** Check whether the integrated engine binary and model are present. */
 export async function checkSetupState() {
@@ -26,4 +26,9 @@ export async function transcribe(blob, mimeType) {
   const s = get(settings);
   const audioBase64 = await blobToBase64(blob);
   return Transcribe(audioBase64, mimeType, s);
+}
+
+export async function refine(text) {
+  const s = get(settings);
+  return Refine(text, s);
 }

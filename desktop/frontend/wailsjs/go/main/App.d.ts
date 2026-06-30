@@ -10,6 +10,8 @@ export function GetSystemInfo():Promise<main.SystemInfo>;
 
 export function LoadSettings():Promise<main.Settings>;
 
+export function Refine(arg1:string,arg2:main.Settings):Promise<string>;
+
 export function SaveSettings(arg1:main.Settings):Promise<void>;
 
 export function StartDownload(arg1:string):Promise<void>;

@@ -7,25 +7,40 @@
   import Wizard         from '$lib/components/Wizard.svelte';
 
   import {
-    settings, rawText, isTranscribing, isRecording,
+    settings, rawText, refinedText, isTranscribing, isRefining, isRecording,
     showSettings, showWizard, audioBlob, endpointError,
     initSettings
   } from '$lib/stores.js';
-  import { transcribe, checkSetupState } from '$lib/api.js';
+  import { transcribe, refine, checkSetupState } from '$lib/api.js';
 
   async function handleRecorded(e) {
     const { blob, mimeType } = e.detail;
     audioBlob.set(blob);
     endpointError.set(null);
+    refinedText.set('');
     isTranscribing.set(true);
 
+    let text = '';
     try {
-      const text = await transcribe(blob, mimeType);
+      text = await transcribe(blob, mimeType);
       rawText.set(text);
     } catch (err) {
       endpointError.set({ source: 'Whisper', message: err?.message ?? String(err) });
+      return;
     } finally {
       isTranscribing.set(false);
+    }
+
+    if ($settings.refinementEnabled && text) {
+      isRefining.set(true);
+      try {
+        const polished = await refine(text);
+        refinedText.set(polished);
+      } catch (err) {
+        endpointError.set({ source: 'Refinement', message: err?.message ?? String(err) });
+      } finally {
+        isRefining.set(false);
+      }
     }
   }
 

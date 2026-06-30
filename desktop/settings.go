@@ -11,11 +11,14 @@ const settingsFileName = "settings.json"
 
 func defaultSettings() Settings {
 	return Settings{
-		Mode:            "integrated",
-		WhisperURL:      "http://localhost:9000",
-		WhisperLanguage: "",
-		WhisperTask:     "transcribe",
-		ModelName:       "",
+		Mode:              "integrated",
+		WhisperURL:        "http://localhost:9000",
+		WhisperLanguage:   "",
+		WhisperTask:       "transcribe",
+		ModelName:         "",
+		RefinementEnabled: false,
+		RefinementURL:     "http://localhost:11434/v1",
+		RefinementModel:   "qwen3:1.7b",
 	}
 }
 

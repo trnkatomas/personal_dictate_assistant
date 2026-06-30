@@ -1,10 +1,19 @@
 <script>
-  import { rawText, isTranscribing } from '$lib/stores.js';
+  import { rawText, refinedText, isTranscribing, isRefining } from '$lib/stores.js';
+
+  let showRefined = true;  // when refinedText is present, default to showing it
+
+  // Switch to refined view automatically when refinement lands
+  $: if ($refinedText) showRefined = true;
+  // Reset to raw view when a new recording starts
+  $: if (!$rawText && !$refinedText) showRefined = false;
+
+  $: displayText = ($refinedText && showRefined) ? $refinedText : $rawText;
+  $: hasToggle   = !!$refinedText && !!$rawText;
 
   let copied = false;
-
   async function copy() {
-    await navigator.clipboard.writeText($rawText);
+    await navigator.clipboard.writeText(displayText);
     copied = true;
     setTimeout(() => (copied = false), 1500);
   }
@@ -16,7 +25,23 @@
     <div class="pane-actions">
       {#if $isTranscribing}
         <span class="badge loading">Transcribing…</span>
-      {:else if $rawText}
+      {:else if $isRefining}
+        <span class="badge refining">Refining…</span>
+      {:else if hasToggle}
+        <div class="toggle-group">
+          <button
+            class="toggle-btn"
+            class:active={!showRefined}
+            on:click={() => showRefined = false}
+          >Raw</button>
+          <button
+            class="toggle-btn"
+            class:active={showRefined}
+            on:click={() => showRefined = true}
+          >Refined</button>
+        </div>
+      {/if}
+      {#if displayText && !$isTranscribing && !$isRefining}
         <button class="action-btn" on:click={copy}>{copied ? '✓ Copied' : 'Copy'}</button>
       {/if}
     </div>
@@ -24,10 +49,14 @@
 
   <textarea
     class="pane-body"
-    bind:value={$rawText}
-    placeholder="Raw transcription will appear here after recording…"
+    value={displayText}
+    on:input={(e) => {
+      if (showRefined && $refinedText) refinedText.set(e.target.value);
+      else rawText.set(e.target.value);
+    }}
+    placeholder="Transcription will appear here after recording…"
     spellcheck="true"
-    aria-label="Raw transcription"
+    aria-label="Transcription"
   ></textarea>
 </div>
 
@@ -97,9 +126,42 @@
     animation: blink 1.4s ease-in-out infinite;
   }
 
+  .refining {
+    background: #3b1f6e;
+    color: #c4b5fd;
+    animation: blink 1.4s ease-in-out infinite;
+  }
+
   @keyframes blink {
     0%, 100% { opacity: 1; }
     50%       { opacity: 0.5; }
+  }
+
+  /* Raw / Refined toggle */
+  .toggle-group {
+    display: flex;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 5px;
+    overflow: hidden;
+  }
+
+  .toggle-btn {
+    background: none;
+    border: none;
+    color: #64748b;
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 0.15rem 0.55rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+    letter-spacing: 0.03em;
+  }
+  .toggle-btn:hover { color: #e2e8f0; }
+  .toggle-btn.active {
+    background: #7c3aed;
+    color: #fff;
   }
 
   .action-btn {
@@ -112,7 +174,6 @@
     cursor: pointer;
     transition: all 0.15s;
   }
-
   .action-btn:hover {
     background: #1e293b;
     color: #e2e8f0;

@@ -13,6 +13,10 @@ type Settings struct {
 	WhisperLanguage string `json:"whisperLanguage"`
 	WhisperTask     string `json:"whisperTask"`
 	ModelName       string `json:"modelName"` // e.g. "large-v3-turbo", set by wizard
+
+	RefinementEnabled bool   `json:"refinementEnabled"`
+	RefinementURL     string `json:"refinementUrl"`   // OpenAI-compatible base URL, e.g. "http://localhost:11434/v1"
+	RefinementModel   string `json:"refinementModel"` // e.g. "qwen3:1.7b"
 }
 
 // App is the Wails application struct. All exported methods are bound to the JS frontend.

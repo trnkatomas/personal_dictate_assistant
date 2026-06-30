@@ -2,11 +2,14 @@
   import { settings, showSettings, showWizard } from '$lib/stores.js';
 
   const DEFAULTS = {
-    mode:            'integrated',
-    whisperUrl:      'http://localhost:9000',
-    whisperLanguage: '',
-    whisperTask:     'transcribe',
-    modelName:       '',
+    mode:              'integrated',
+    whisperUrl:        'http://localhost:9000',
+    whisperLanguage:   '',
+    whisperTask:       'transcribe',
+    modelName:         '',
+    refinementEnabled: false,
+    refinementUrl:     'http://localhost:11434/v1',
+    refinementModel:   'qwen3:1.7b',
   };
 
   const PRESETS = [
@@ -126,6 +129,27 @@
                 placeholder="http://localhost:9000"
                 class:previewing={isPreviewing}
               />
+            </label>
+          {/if}
+        </div>
+
+        <!-- ── Text refinement frame ── -->
+        <div class="endpoint-frame">
+          <span class="frame-title">Text refinement</span>
+
+          <label class="toggle-label">
+            <input type="checkbox" bind:checked={$settings.refinementEnabled} />
+            <span>Automatically polish transcription with an LLM</span>
+          </label>
+
+          {#if $settings.refinementEnabled}
+            <label>
+              <span>Model URL <em>(OpenAI-compatible base, e.g. Ollama)</em></span>
+              <input type="url" bind:value={$settings.refinementUrl} placeholder="http://localhost:11434/v1" />
+            </label>
+            <label>
+              <span>Model name</span>
+              <input type="text" bind:value={$settings.refinementModel} placeholder="qwen3:1.7b" />
             </label>
           {/if}
         </div>
@@ -335,6 +359,28 @@
     display: flex;
     flex-direction: column;
     gap: 0.3rem;
+  }
+
+  .toggle-label {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+  }
+
+  .toggle-label input[type="checkbox"] {
+    accent-color: #7c3aed;
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    border: none;
+    background: none;
+    padding: 0;
+  }
+
+  .toggle-label span {
+    font-size: 0.82rem;
+    color: #94a3b8;
   }
 
   label span {
