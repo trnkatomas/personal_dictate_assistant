@@ -1,198 +1,214 @@
 # Dictate Assistant
 
-Local, privacy-first voice transcription.
+A native desktop dictation app. Record or drop in audio, get a transcript,
+optionally polish it with a local LLM — all running on your machine, no
+cloud dependency required.
 
-```
-Browser → Whisper ASR (speech-to-text)
-```
-
-Everything runs locally via Docker Compose — no cloud, no data leaves your machine.
+Built with [Wails v2](https://wails.io) (Go backend + native webview), so it
+ships as a single installable app — no Docker, no Node server, no browser tab.
 
 ---
 
 ## Quick start
 
-### 1. Start the stack
+### Option A — download a release
+
+Grab the latest build for your platform from the
+[Releases page](https://github.com/trnkatomas/personal_dictate_assistant/releases):
+
+- **macOS** — `dictate-assistant-macos-universal.zip` (Apple Silicon + Intel)
+- **Windows** — `dictate-assistant-amd64-installer.exe`
+- **Linux** — `dictate-assistant-linux-amd64.tar.gz`
+
+On first launch, a setup wizard detects your hardware, recommends a Whisper
+model, and downloads everything it needs. No prior setup required beyond
+that.
+
+> **macOS note:** the app isn't notarized yet, so Gatekeeper will block the
+> first launch. Right-click the app → **Open** to bypass it once.
+
+### Option B — build from source
 
 ```bash
-docker compose up -d
+cd desktop
+wails build
+open build/bin/dictate-assistant.app   # macOS; see build/bin/ on other platforms
 ```
 
-First run downloads the Whisper model weights. They're cached in a named
-volume so subsequent starts are instant.
+Requires Go 1.23+, Node 18+, and the [Wails CLI](https://wails.io/docs/gettingstarted/installation).
 
-### 2. Open the app
+---
 
-<http://localhost:3000>
+## First-run setup
+
+The first time you launch the app, a wizard walks through:
+
+1. **Welcome** — what's about to happen
+2. **Model recommendation** — based on detected CPU/GPU, RAM, and system
+   locale, it suggests a Whisper model size (e.g. `large-v3-turbo` on Apple
+   Silicon with ≥8 GB RAM, `small`/`medium` on CPU-only machines). You can
+   override the suggestion.
+3. **Download** — on macOS this installs `whisper-cpp` and `ffmpeg` via
+   Homebrew, then downloads the chosen GGML model from Hugging Face. Linux
+   downloads a prebuilt `whisper-cli` binary directly. Windows integrated
+   mode isn't implemented yet — use HTTP mode instead (see below).
+4. **Ready** — drop straight into the main app.
+
+You can skip the wizard entirely ("I know what I'm doing") and configure an
+HTTP Whisper endpoint manually in Settings instead.
 
 ---
 
 ## Usage
 
-| Step | Action |
-|------|--------|
-| 1 | Click **Record** (or press **Space**) and speak |
-| 2 | Click **Stop** — audio is sent to Whisper automatically |
-| 3 | Transcription appears in the pane below (editable) |
+| Action | How |
+|---|---|
+| Record | Click **Record** (or press **Space**) and speak; click again to stop |
+| Transcribe a file | Click **Open file…** and pick an audio file, or drag one onto the window |
+| Edit | The transcript is a plain editable text box |
+| Copy | **Copy** button in the pane header |
 
-All settings (Whisper URL, language) are persisted in
-`localStorage` — they survive page reloads.
+Supported file formats for drag/drop and the file picker: anything
+`ffmpeg` can decode (mp3, mp4/m4a, wav, flac, ogg, webm, aac, …).
 
 ---
 
 ## Settings
 
-Open ⚙ **Settings** in the top-right corner.
+### Transcription mode
 
-The **Service endpoints** section has three built-in presets. Select one from
-the dropdown — the URL field immediately previews the value — then click
-**Apply** to commit. Pick **Current** to discard the preview and revert to
-whatever is saved.
+| Mode | What it does |
+|---|---|
+| **Integrated** (default) | Runs `whisper-cli` as a local subprocess against the model downloaded by the wizard. Fully offline. |
+| **HTTP endpoint** | Posts audio to an external Whisper ASR service instead — e.g. the bundled `docker-compose.yml` Whisper container, or a remote URL. |
 
-| Preset | Whisper URL |
-|--------|-------------|
-| Docker Compose | `http://whisper:9000` |
-| Local | `http://localhost:9000` |
-| External | *(clear — enter your own)* |
+Language and task (transcribe vs. translate-to-English) apply to both modes.
 
-> **Note:** this URL is resolved by the SvelteKit server, not the browser.
-> Use the Docker service name (`whisper`) when the app itself runs in Docker Compose,
-> and `localhost` when running the dev server directly on your machine.
+### Text refinement
 
-| Setting | Default | Notes |
-|---------|---------|-------|
-| Language | *(auto)* | ISO 639-1 code, e.g. `en`, `de`, `cs` |
-| Task | Transcribe | Switch to *Translate* to get English output |
+Optional LLM pass that polishes the raw transcript — fixes punctuation,
+capitalization, and obvious speech-to-text artifacts without changing
+meaning or wording choices.
+
+Works against **any OpenAI-compatible chat completions endpoint**, so it's
+designed to run against a local model:
+
+- [Ollama](https://ollama.com): `http://localhost:11434/v1`
+- [llama.cpp's `llama-server`](https://github.com/ggerganov/llama.cpp): `http://localhost:8080/v1`
+- LM Studio, or any other local/remote OpenAI-compatible server
+
+Enable it in **Settings → Text refinement**, set the URL and model name
+(e.g. `qwen3:1.7b` — small, multilingual, fast enough for this on a laptop).
+
+Once enabled, the main view splits into two panes:
+
+- **Transcript** — the raw output
+- **Refined** — has its own editable prompt box and a **Refine** button
+  (refinement is manual, not automatic, so you control when it runs)
+
+A **⟷ Diff** toggle in the top bar switches to a word-level diff between
+the raw and refined text, so you can see exactly what the model changed.
 
 ---
 
-## Whisper model size
+## Running Whisper via Docker (HTTP mode)
 
-### Changing the model (requires restart)
+If you'd rather not install anything locally, or want GPU acceleration on
+a machine without Apple Silicon, the repo includes a `docker-compose.yml`
+for the [Whisper ASR webservice](https://github.com/ahmetoner/whisper-asr-webservice):
 
-Edit `ASR_MODEL` in `docker-compose.yml` and recreate the whisper container:
+```bash
+docker compose up -d
+```
+
+Then in the app, switch **Settings → Transcription mode** to **HTTP
+endpoint** and point it at `http://localhost:9000`.
+
+### Model size
+
+Edit `ASR_MODEL` in `docker-compose.yml` and recreate the container:
 
 ```bash
 docker compose up -d --force-recreate whisper
 ```
 
-Model weights are cached in the `whisper-models` volume, so restarting with a
-previously-used model takes only a few seconds.
-
 | Model | VRAM | Speed | Quality |
-|-------|------|-------|---------|
-| `tiny`   | ~1 GB  | fastest | acceptable |
-| `base`   | ~1 GB  | fast    | good |
-| `small`  | ~2 GB  | medium  | better |
-| `medium` | ~5 GB  | slow    | great |
-| `large`  | ~10 GB | slowest | best |
+|---|---|---|---|
+| `tiny` | ~1 GB | fastest | acceptable |
+| `base` | ~1 GB | fast | good |
+| `small` | ~2 GB | medium | better |
+| `medium` | ~5 GB | slow | great |
+| `large` / `large-v3-turbo` | ~10 GB | slowest / fast | best |
 
-### Switching between model sizes without restarting
+### GPU support
 
-The Whisper service loads its model once at startup and offers no API to change
-it at runtime. The cleanest workaround is to run multiple Whisper containers
-in parallel — one per model size — and switch between them via the Settings
-endpoint presets.
-
-Add extra whisper services to `docker-compose.yml`:
-
-```yaml
-services:
-  whisper-small:
-    image: onerahmet/openai-whisper-asr-webservice:latest
-    environment:
-      - ASR_MODEL=small
-      - ASR_ENGINE=openai_whisper
-    volumes:
-      - whisper-models:/root/.cache/whisper
-
-  whisper-large:
-    image: onerahmet/openai-whisper-asr-webservice:latest
-    environment:
-      - ASR_MODEL=large
-      - ASR_ENGINE=openai_whisper
-    volumes:
-      - whisper-models:/root/.cache/whisper   # shared cache — no duplicate downloads
-```
-
-Then add matching presets in `Settings.svelte`:
-
-```js
-{ id: 'docker-small', label: 'Docker — Whisper small', whisperUrl: 'http://whisper-small:9000' },
-{ id: 'docker-large', label: 'Docker — Whisper large', whisperUrl: 'http://whisper-large:9000' },
-```
-
-Model switching becomes instant — just pick a preset and click **Apply**.
-The trade-off is that both models occupy RAM simultaneously.
-
----
-
-## GPU support
-
-Uncomment the `deploy.resources` blocks in `docker-compose.yml` and switch
-the Whisper image tag to `:latest-gpu`. Requires the
+Uncomment the `deploy.resources` block in `docker-compose.yml` and switch
+the image tag to `:latest-gpu`. Requires the
 [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
-
----
-
-## Local development (hot-reload)
-
-```bash
-cd app
-npm install
-npm run dev
-```
-
-The dev server starts on <http://localhost:5173>.  
-Make sure Whisper is already running:
-
-```bash
-docker compose up whisper -d
-```
-
-In the app's Settings, use the **Local** preset so the URL points at
-`localhost` (where the service is port-forwarded from Docker).
 
 ---
 
 ## Architecture
 
 ```
-docker-compose.yml
-├── whisper   onerahmet/openai-whisper-asr-webservice  :9000
-└── app       SvelteKit Node server                    :3000
-
-app/
-├── src/
-│   ├── lib/
-│   │   ├── server/
-│   │   │   └── proxy.js           — server-side proxy helper (avoids CORS)
-│   │   ├── stores.js              — Svelte stores (persisted to localStorage)
-│   │   ├── api.js                 — fetch wrapper for Whisper
-│   │   └── components/
-│   │       ├── Recorder.svelte         — mic + live waveform canvas
-│   │       ├── TranscriptPane.svelte   — transcription pane (editable)
-│   │       └── Settings.svelte         — modal settings panel with presets
-│   └── routes/
-│       ├── api/whisper/[...path]/+server.js  — proxy → Whisper
-│       └── +page.svelte                      — main page
-└── Dockerfile   — multi-stage: node build → node serve
+desktop/
+├── main.go              — Wails app entrypoint, window options
+├── app.go                — App struct, Transcribe/LoadSettings/SaveSettings bindings
+├── whisper.go            — HTTP + subprocess transcription dispatch
+├── refine.go              — LLM refinement via OpenAI-compatible chat completions
+├── setup.go               — hardware detection, model download, setup wizard backend
+├── settings.go            — settings.json persistence (~/Library/Application Support/dictate-assistant/ on macOS)
+└── frontend/
+    └── src/
+        ├── App.svelte                       — shell: topbar, panes, drag & drop
+        ├── lib/
+        │   ├── api.js                       — thin wrapper around generated Wails bindings
+        │   ├── stores.js                    — Svelte stores; settings persist via Go, not localStorage
+        │   └── components/
+        │       ├── Recorder.svelte           — mic capture + live waveform
+        │       ├── TranscriptPane.svelte     — raw transcript (editable)
+        │       ├── RefinementPane.svelte     — editable prompt + Refine button + output
+        │       ├── DiffView.svelte           — word-level diff (raw vs. refined)
+        │       ├── Settings.svelte           — mode toggle, refinement config
+        │       └── Wizard.svelte             — 4-step first-run setup
+        └── wailsjs/                          — auto-generated JS↔Go bindings (don't hand-edit)
 ```
 
-### Request flow
+Audio path: `MediaRecorder` (WebM/Opus) → base64 over the Wails JS↔Go
+bridge → decoded in Go → converted to 16 kHz mono WAV via `ffmpeg` →
+`whisper-cli` subprocess → transcript on stdout. File-picker transcriptions
+skip the base64 round-trip and read the path directly.
 
-The browser always talks to the SvelteKit server on the same origin.
-The server proxies requests to Whisper using the URL configured in Settings,
-which is sent as an `X-Proxy-Target` header. This means:
-
-- No CORS issues regardless of where the upstream service runs
-- Upstream URL is changed at runtime through the Settings UI — no rebuild needed
-- The URL must be reachable from the **server** (inside Docker), not the browser
+There's no proxy layer and no CORS handling anywhere — Go's `net/http`
+talks directly to local or remote services, and a desktop webview has no
+concept of cross-origin restrictions to begin with.
 
 ---
 
-## Desktop app (in progress)
+## Development
 
-This project is being migrated to a native Wails (Go + webview) desktop app —
-see `desktop/` once it lands, and `CLAUDE-whisper-setup.md` for the rationale.
-The web app above will eventually be replaced by it.
+```bash
+cd desktop
+wails dev
+```
+
+Hot-reloads both the Svelte frontend and (on save) the Go backend. Settings
+are stored at:
+
+- macOS: `~/Library/Application Support/dictate-assistant/settings.json`
+- Windows: `%AppData%/dictate-assistant/settings.json`
+- Linux: `$XDG_CONFIG_HOME/dictate-assistant/settings.json` (or `~/.config/...`)
+
+Delete that file (or the whole `dictate-assistant/` folder) to reset to a
+fresh first-run state and re-trigger the wizard.
+
+### Releases
+
+Pushing a `v*` tag triggers [`.github/workflows/release.yml`](.github/workflows/release.yml),
+which builds macOS (universal), Windows, and Linux artifacts in parallel
+and publishes them to a GitHub Release.
+
+```bash
+git tag v0.1.0
+git push origin --tags
+```
