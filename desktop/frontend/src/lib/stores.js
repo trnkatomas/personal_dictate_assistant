@@ -12,9 +12,12 @@ export const settings = writable({
   refinementEnabled: false,
   refinementUrl:     'http://localhost:11434/v1',
   refinementModel:   'qwen3:1.7b',
-  refinementPrompt:  'Fix punctuation, capitalisation, and obvious speech-to-text artifacts. ' +
-                      'Keep the original language, tone, and meaning unchanged. Return only ' +
-                      'the corrected text — no explanations, no preamble.',
+  refinementPrompt:  "Fix punctuation, capitalization, spelling, and obvious speech-to-text " +
+                      "mistakes. Keep the original language, tone, and meaning exactly as they " +
+                      "are. Only change words you're confident are wrong — leave everything " +
+                      "else untouched, and make sure corrections fit naturally with the " +
+                      "surrounding sentence. Return only the corrected text, with no " +
+                      "explanations or preamble.",
 });
 
 /** Load persisted settings from the Go backend. Call once on app startup. */

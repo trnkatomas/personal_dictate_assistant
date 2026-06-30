@@ -9,9 +9,11 @@ import (
 const settingsAppDirName = "dictate-assistant"
 const settingsFileName = "settings.json"
 
-const defaultRefinementPrompt = "Fix punctuation, capitalisation, and obvious speech-to-text " +
-	"artifacts. Keep the original language, tone, and meaning unchanged. Return only the " +
-	"corrected text — no explanations, no preamble."
+const defaultRefinementPrompt = "Fix punctuation, capitalization, spelling, and obvious " +
+	"speech-to-text mistakes. Keep the original language, tone, and meaning exactly as they " +
+	"are. Only change words you're confident are wrong — leave everything else untouched, " +
+	"and make sure corrections fit naturally with the surrounding sentence. Return only the " +
+	"corrected text, with no explanations or preamble."
 
 func defaultSettings() Settings {
 	return Settings{
