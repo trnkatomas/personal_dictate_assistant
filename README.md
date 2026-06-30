@@ -49,10 +49,17 @@ The first time you launch the app, a wizard walks through:
    Silicon with ≥8 GB RAM, `small`/`medium` on CPU-only machines). You can
    override the suggestion.
 3. **Download** — on macOS this installs `whisper-cpp` and `ffmpeg` via
-   Homebrew, then downloads the chosen GGML model from Hugging Face. Linux
-   downloads a prebuilt `whisper-cli` binary directly. Windows integrated
-   mode isn't implemented yet — use HTTP mode instead (see below).
+   Homebrew, then downloads the chosen GGML model from Hugging Face. On
+   Linux and Windows it downloads a prebuilt `whisper-cli` binary (plus its
+   required shared libraries) straight from whisper.cpp's GitHub releases —
+   no package manager needed.
 4. **Ready** — drop straight into the main app.
+
+> **ffmpeg on Windows/Linux:** the wizard doesn't install `ffmpeg` for you
+> on these platforms (no Homebrew equivalent assumed). If it's missing,
+> transcription will show an install hint — `winget install ffmpeg` on
+> Windows, or your distro's package manager on Linux (`apt install ffmpeg`,
+> `dnf install ffmpeg`, …).
 
 You can skip the wizard entirely ("I know what I'm doing") and configure an
 HTTP Whisper endpoint manually in Settings instead.

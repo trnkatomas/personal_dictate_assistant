@@ -1,7 +1,9 @@
 package main
 
 import (
+	"archive/tar"
 	"archive/zip"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -59,7 +61,7 @@ func binaryPath() (string, error) {
 	}
 	name := "whisper-cli"
 	if runtime.GOOS == "windows" {
-		name = "whisper-xxl.exe"
+		name = "whisper-cli.exe"
 	}
 	return filepath.Join(dir, "bin", name), nil
 }
@@ -306,7 +308,7 @@ func pickBestAsset(assets []ghAsset) (url, tag string) {
 
 	for _, a := range assets {
 		name := strings.ToLower(a.Name)
-		if !strings.HasSuffix(name, ".zip") {
+		if !strings.HasSuffix(name, ".zip") && !strings.HasSuffix(name, ".tar.gz") {
 			continue
 		}
 		score := 0
@@ -348,6 +350,20 @@ func pickBestAsset(assets []ghAsset) (url, tag string) {
 				continue
 			}
 			score = 1
+		case "windows/amd64":
+			if !strings.HasSuffix(name, ".zip") || !strings.Contains(name, "x64") {
+				continue // skip Win32 (32-bit) and non-zip assets
+			}
+			if strings.Contains(name, "cublas") {
+				// Needs a matching CUDA runtime installed system-wide; most
+				// users won't have it, so the exe would fail to start.
+				continue
+			}
+			if strings.Contains(name, "blas") {
+				score = 1 // OpenBLAS build: faster, but +50MB dependency DLL
+			} else {
+				score = 2 // plain build: smaller, fewer ways to fail
+			}
 		default:
 			continue
 		}
@@ -415,11 +431,12 @@ func (a *App) downloadBinaryFromGitHub(ctx context.Context, binPath string) erro
 		return err
 	}
 
-	zipURL, _ := pickBestAsset(rel.Assets)
-	if zipURL == "" {
+	archiveURL, _ := pickBestAsset(rel.Assets)
+	if archiveURL == "" {
 		var names []string
 		for _, a := range rel.Assets {
-			if strings.HasSuffix(strings.ToLower(a.Name), ".zip") {
+			lower := strings.ToLower(a.Name)
+			if strings.HasSuffix(lower, ".zip") || strings.HasSuffix(lower, ".tar.gz") {
 				names = append(names, a.Name)
 			}
 		}
@@ -427,7 +444,7 @@ func (a *App) downloadBinaryFromGitHub(ctx context.Context, binPath string) erro
 			runtime.GOOS, runtime.GOARCH, rel.TagName, strings.Join(names, ", "))
 	}
 
-	tmpZip, err := downloadToTemp(ctx, zipURL, func(pct float64) {
+	tmpArchive, err := downloadToTemp(ctx, archiveURL, func(pct float64) {
 		wailsRuntime.EventsEmit(a.ctx, "download:progress", DownloadProgress{
 			Label:   "Whisper binary (" + rel.TagName + ")",
 			Percent: pct * 0.9,
@@ -436,11 +453,23 @@ func (a *App) downloadBinaryFromGitHub(ctx context.Context, binPath string) erro
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmpZip)
 
-	// whisper.cpp renamed the main binary to "whisper-cli" in recent versions.
-	if err := extractFromZip(tmpZip, binPath, []string{"whisper-cli", "main"}); err != nil {
-		return fmt.Errorf("extract binary from zip: %w", err)
+	// downloadToTemp's filename carries no extension; extractEngineArchive
+	// switches on it to pick zip vs. tar.gz, so restore it from the source URL.
+	archiveFile := tmpArchive
+	if strings.HasSuffix(strings.ToLower(archiveURL), ".tar.gz") {
+		archiveFile += ".tar.gz"
+	} else {
+		archiveFile += ".zip"
+	}
+	if err := os.Rename(tmpArchive, archiveFile); err != nil {
+		os.Remove(tmpArchive)
+		return err
+	}
+	defer os.Remove(archiveFile)
+
+	if err := extractEngineArchive(archiveFile, filepath.Dir(binPath), filepath.Base(binPath)); err != nil {
+		return fmt.Errorf("extract binary from archive: %w", err)
 	}
 	if err := os.Chmod(binPath, 0o755); err != nil {
 		return err
@@ -547,46 +576,125 @@ func downloadToTemp(ctx context.Context, u string, progress func(float64)) (stri
 	return tmp.Name(), nil
 }
 
-// extractFromZip searches the zip for the first file whose basename matches any
-// of the given candidateNames, and extracts it to destPath.
-func extractFromZip(zipPath, destPath string, candidateNames []string) error {
+// extractEngineArchive extracts the whisper-cli binary (binName, e.g.
+// "whisper-cli" or "whisper-cli.exe") plus every shared library (.dll/.so*/
+// .dylib) from the archive into destDir, flattening whatever subdirectory
+// they're nested in. whisper.cpp's prebuilt Windows/Linux releases ship the
+// binary alongside several required runtime libraries (GGML CPU-dispatch
+// variants, the core ggml/whisper libs) in the same directory — extracting
+// only the binary leaves it unable to start. Unrelated bundled tools
+// (bench, server, test binaries, …) are skipped to keep the install small.
+func extractEngineArchive(archivePath, destDir, binName string) error {
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return err
+	}
+	switch {
+	case strings.HasSuffix(archivePath, ".zip"):
+		return extractZipEngine(archivePath, destDir, binName)
+	case strings.HasSuffix(archivePath, ".tar.gz"):
+		return extractTarGzEngine(archivePath, destDir, binName)
+	default:
+		return fmt.Errorf("unsupported archive format: %s", archivePath)
+	}
+}
+
+// isEngineLibrary reports whether a filename looks like a shared library
+// whisper-cli needs at runtime (.dll, .so / .so.N / .so.N.N, .dylib).
+func isEngineLibrary(name string) bool {
+	lower := strings.ToLower(name)
+	return strings.HasSuffix(lower, ".dll") ||
+		strings.Contains(lower, ".so") ||
+		strings.HasSuffix(lower, ".dylib")
+}
+
+func extractZipEngine(zipPath, destDir, binName string) error {
 	r, err := zip.OpenReader(zipPath)
 	if err != nil {
 		return err
 	}
 	defer r.Close()
 
+	found := false
 	for _, f := range r.File {
-		base := filepath.Base(f.Name)
-		matched := false
-		for _, name := range candidateNames {
-			if base == name {
-				matched = true
-				break
-			}
-		}
-		if !matched || f.FileInfo().IsDir() {
+		if f.FileInfo().IsDir() {
 			continue
 		}
-
-		if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
-			return err
+		base := filepath.Base(f.Name)
+		if base != binName && !isEngineLibrary(base) {
+			continue
 		}
 		rc, err := f.Open()
 		if err != nil {
 			return err
 		}
-		out, err := os.Create(destPath)
+		err = writeExtractedFile(filepath.Join(destDir, base), rc)
+		rc.Close()
 		if err != nil {
-			rc.Close()
 			return err
 		}
-		_, copyErr := io.Copy(out, rc)
-		rc.Close()
-		out.Close()
+		if base == binName {
+			found = true
+		}
+	}
+	if !found {
+		return fmt.Errorf("%s not found in archive", binName)
+	}
+	return nil
+}
+
+func extractTarGzEngine(tarGzPath, destDir, binName string) error {
+	f, err := os.Open(tarGzPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		return err
+	}
+	defer gz.Close()
+	tr := tar.NewReader(gz)
+
+	found := false
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		if hdr.Typeflag != tar.TypeReg {
+			continue
+		}
+		base := filepath.Base(hdr.Name)
+		if base != binName && !isEngineLibrary(base) {
+			continue
+		}
+		if err := writeExtractedFile(filepath.Join(destDir, base), tr); err != nil {
+			return err
+		}
+		if base == binName {
+			found = true
+		}
+	}
+	if !found {
+		return fmt.Errorf("%s not found in archive", binName)
+	}
+	return nil
+}
+
+func writeExtractedFile(destPath string, src io.Reader) error {
+	out, err := os.OpenFile(destPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+	if err != nil {
+		return err
+	}
+	_, copyErr := io.Copy(out, src)
+	closeErr := out.Close()
+	if copyErr != nil {
 		return copyErr
 	}
-	return fmt.Errorf("none of %v found in zip", candidateNames)
+	return closeErr
 }
 
 func updateSettingsAfterDownload(model string) error {

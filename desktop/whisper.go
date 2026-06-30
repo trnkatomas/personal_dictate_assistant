@@ -27,9 +27,6 @@ func transcribeWhisper(audio []byte, mimeType string, s Settings) (string, error
 // transcribeFileAt transcribes an existing file on disk (any format ffmpeg can read).
 // Used by the file picker and drag-drop paths where we already have a path.
 func transcribeFileAt(filePath string, s Settings) (string, error) {
-	if runtime.GOOS == "windows" {
-		return "", fmt.Errorf("Windows integrated mode not yet implemented — use HTTP mode instead")
-	}
 	if s.ModelName == "" {
 		return "", fmt.Errorf("no model selected — run the setup wizard")
 	}
@@ -47,9 +44,6 @@ func transcribeFileAt(filePath string, s Settings) (string, error) {
 // transcribeSubprocess invokes the local whisper-cli binary and returns the transcript.
 // Requires setup to have been completed via the wizard (binary + model downloaded).
 func transcribeSubprocess(audio []byte, mimeType string, s Settings) (string, error) {
-	if runtime.GOOS == "windows" {
-		return "", fmt.Errorf("Windows integrated mode not yet implemented — use HTTP mode instead")
-	}
 	if s.ModelName == "" {
 		return "", fmt.Errorf("no model selected — run the setup wizard")
 	}
@@ -116,9 +110,8 @@ func runWhisper(binPath, modPath, srcPath string, s Settings) (string, error) {
 func convertToWAV(srcPath string) (wavPath string, cleanup func(), err error) {
 	ffmpeg, lookErr := exec.LookPath("ffmpeg")
 	if lookErr != nil {
-		return "", func() {}, fmt.Errorf(
-			"ffmpeg not found — install it with: brew install ffmpeg\n" +
-				"(Required to convert browser audio to a format whisper-cli can read.)")
+		return "", func() {}, fmt.Errorf("%s\n(Required to convert browser audio to a format whisper-cli can read.)",
+			ffmpegInstallHint())
 	}
 
 	tmp, err := os.CreateTemp("", "dictate-wav-*.wav")
@@ -141,6 +134,22 @@ func convertToWAV(srcPath string) (wavPath string, cleanup func(), err error) {
 		return wavPath, cleanup, fmt.Errorf("audio conversion: %s", strings.TrimSpace(string(out)))
 	}
 	return wavPath, cleanup, nil
+}
+
+// ffmpegInstallHint returns a platform-specific instruction for installing
+// ffmpeg, since there's no single command that works everywhere.
+func ffmpegInstallHint() string {
+	switch runtime.GOOS {
+	case "windows":
+		return "ffmpeg not found — install it with: winget install ffmpeg\n" +
+			"(or download a build from https://www.gyan.dev/ffmpeg/builds/ and add it to PATH)"
+	case "linux":
+		return "ffmpeg not found — install it with your package manager, e.g.:\n" +
+			"  sudo apt install ffmpeg   (Debian/Ubuntu)\n" +
+			"  sudo dnf install ffmpeg   (Fedora)"
+	default: // darwin
+		return "ffmpeg not found — install it with: brew install ffmpeg"
+	}
 }
 
 func audioExt(mimeType string) string {
