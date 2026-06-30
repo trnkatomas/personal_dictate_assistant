@@ -1,0 +1,53 @@
+package main
+
+import (
+	"context"
+	"encoding/base64"
+	"fmt"
+)
+
+// Settings holds all user-configurable preferences.
+type Settings struct {
+	Mode            string `json:"mode"`            // "integrated" | "http"
+	WhisperURL      string `json:"whisperUrl"`      // used when Mode == "http"
+	WhisperLanguage string `json:"whisperLanguage"`
+	WhisperTask     string `json:"whisperTask"`
+	ModelName       string `json:"modelName"` // e.g. "large-v3-turbo", set by wizard
+}
+
+// App is the Wails application struct. All exported methods are bound to the JS frontend.
+type App struct {
+	ctx            context.Context
+	downloadCancel context.CancelFunc
+}
+
+// NewApp creates a new App application struct
+func NewApp() *App {
+	return &App{}
+}
+
+// startup is called when the app starts. The context is saved so we can call runtime methods.
+func (a *App) startup(ctx context.Context) {
+	a.ctx = ctx
+}
+
+// Transcribe decodes base64 audio and sends it to the configured Whisper backend.
+// mimeType is the MediaRecorder mimeType (e.g. "audio/mp4") used to pick the temp filename extension.
+func (a *App) Transcribe(audioBase64 string, mimeType string, settings Settings) (string, error) {
+	raw, err := base64.StdEncoding.DecodeString(audioBase64)
+	if err != nil {
+		return "", fmt.Errorf("decode audio: %w", err)
+	}
+	return transcribeWhisper(raw, mimeType, settings)
+}
+
+// LoadSettings reads persisted settings from the on-disk config file,
+// falling back to defaults if none exist yet.
+func (a *App) LoadSettings() (Settings, error) {
+	return loadSettings()
+}
+
+// SaveSettings persists settings to the on-disk config file.
+func (a *App) SaveSettings(s Settings) error {
+	return saveSettings(s)
+}
