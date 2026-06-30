@@ -18,6 +18,10 @@ export function LoadSettings() {
   return window['go']['main']['App']['LoadSettings']();
 }
 
+export function OpenAndTranscribeFile(arg1) {
+  return window['go']['main']['App']['OpenAndTranscribeFile'](arg1);
+}
+
 export function Refine(arg1, arg2) {
   return window['go']['main']['App']['Refine'](arg1, arg2);
 }

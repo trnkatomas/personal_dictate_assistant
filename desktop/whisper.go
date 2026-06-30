@@ -24,6 +24,26 @@ func transcribeWhisper(audio []byte, mimeType string, s Settings) (string, error
 
 // ── Subprocess (integrated) mode ────────────────────────────────────────────
 
+// transcribeFileAt transcribes an existing file on disk (any format ffmpeg can read).
+// Used by the file picker and drag-drop paths where we already have a path.
+func transcribeFileAt(filePath string, s Settings) (string, error) {
+	if runtime.GOOS == "windows" {
+		return "", fmt.Errorf("Windows integrated mode not yet implemented — use HTTP mode instead")
+	}
+	if s.ModelName == "" {
+		return "", fmt.Errorf("no model selected — run the setup wizard")
+	}
+	binPath, err := resolveWhisperBin()
+	if err != nil {
+		return "", fmt.Errorf("whisper-cli not found — run setup or install via `brew install whisper-cpp`")
+	}
+	modPath, err := modelPath(s.ModelName)
+	if err != nil {
+		return "", fmt.Errorf("model path: %w", err)
+	}
+	return runWhisper(binPath, modPath, filePath, s)
+}
+
 // transcribeSubprocess invokes the local whisper-cli binary and returns the transcript.
 // Requires setup to have been completed via the wizard (binary + model downloaded).
 func transcribeSubprocess(audio []byte, mimeType string, s Settings) (string, error) {
@@ -55,9 +75,12 @@ func transcribeSubprocess(audio []byte, mimeType string, s Settings) (string, er
 	}
 	tmpAudio.Close()
 
-	// whisper-cli (brew build) uses miniaudio which only handles WAV/MP3/FLAC/OGG.
-	// WKWebView produces WebM/Opus, so we convert to 16 kHz mono WAV first.
-	audioPath, cleanup, err := convertToWAV(tmpAudio.Name())
+	return runWhisper(binPath, modPath, tmpAudio.Name(), s)
+}
+
+// runWhisper converts srcPath to WAV if needed, then invokes whisper-cli.
+func runWhisper(binPath, modPath, srcPath string, s Settings) (string, error) {
+	wavPath, cleanup, err := convertToWAV(srcPath)
 	if err != nil {
 		return "", err
 	}
@@ -66,7 +89,7 @@ func transcribeSubprocess(audio []byte, mimeType string, s Settings) (string, er
 	// -np suppresses all non-result output so stdout contains only the transcript.
 	args := []string{
 		"-m", modPath,
-		"-f", audioPath,
+		"-f", wavPath,
 		"--no-timestamps",
 		"-np",
 	}

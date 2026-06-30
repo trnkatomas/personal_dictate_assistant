@@ -11,36 +11,77 @@
     showSettings, showWizard, audioBlob, endpointError,
     initSettings
   } from '$lib/stores.js';
-  import { transcribe, refine, checkSetupState } from '$lib/api.js';
+  import { transcribe, refine, openAndTranscribeFile, checkSetupState } from '$lib/api.js';
 
+  // Shared post-transcription flow: optional refinement.
+  async function afterTranscribe(text) {
+    if (!$settings.refinementEnabled || !text) return;
+    isRefining.set(true);
+    try {
+      refinedText.set(await refine(text));
+    } catch (err) {
+      endpointError.set({ source: 'Refinement', message: err?.message ?? String(err) });
+    } finally {
+      isRefining.set(false);
+    }
+  }
+
+  // Called when the Recorder component finishes a mic recording.
   async function handleRecorded(e) {
     const { blob, mimeType } = e.detail;
     audioBlob.set(blob);
     endpointError.set(null);
     refinedText.set('');
     isTranscribing.set(true);
-
-    let text = '';
     try {
-      text = await transcribe(blob, mimeType);
+      const text = await transcribe(blob, mimeType);
       rawText.set(text);
+      await afterTranscribe(text);
     } catch (err) {
       endpointError.set({ source: 'Whisper', message: err?.message ?? String(err) });
-      return;
     } finally {
       isTranscribing.set(false);
     }
+  }
 
-    if ($settings.refinementEnabled && text) {
-      isRefining.set(true);
-      try {
-        const polished = await refine(text);
-        refinedText.set(polished);
-      } catch (err) {
-        endpointError.set({ source: 'Refinement', message: err?.message ?? String(err) });
-      } finally {
-        isRefining.set(false);
+  // Open native file picker → transcribe on the Go side (no base64 round-trip).
+  async function handleOpenFile() {
+    endpointError.set(null);
+    refinedText.set('');
+    isTranscribing.set(true);
+    try {
+      const text = await openAndTranscribeFile();
+      if (text) {
+        rawText.set(text);
+        await afterTranscribe(text);
       }
+    } catch (err) {
+      endpointError.set({ source: 'Whisper', message: err?.message ?? String(err) });
+    } finally {
+      isTranscribing.set(false);
+    }
+  }
+
+  // Drag & drop: accept audio files dropped anywhere on the window.
+  let dragging = false;
+  function onDragOver(e) { e.preventDefault(); dragging = true; }
+  function onDragLeave()  { dragging = false; }
+  async function onDrop(e) {
+    e.preventDefault();
+    dragging = false;
+    const file = e.dataTransfer?.files?.[0];
+    if (!file) return;
+    endpointError.set(null);
+    refinedText.set('');
+    isTranscribing.set(true);
+    try {
+      const text = await transcribe(file, file.type || 'audio/webm');
+      rawText.set(text);
+      await afterTranscribe(text);
+    } catch (err) {
+      endpointError.set({ source: 'Whisper', message: err?.message ?? String(err) });
+    } finally {
+      isTranscribing.set(false);
     }
   }
 
@@ -75,7 +116,13 @@
   <!-- Full-screen setup wizard — replaces main UI during first-run -->
   <Wizard on:done={() => showWizard.set(false)} />
 {:else}
-  <div class="layout">
+  <!-- svelte-ignore a11y-no-static-element-interactions -->
+  <div class="layout"
+    class:drag-over={dragging}
+    on:dragover={onDragOver}
+    on:dragleave={onDragLeave}
+    on:drop={onDrop}
+  >
     <!-- ── Top bar ──────────────────────────────────────────── -->
     <header class="topbar">
       <span class="app-name">🎙 Dictate</span>
@@ -93,7 +140,22 @@
     <!-- ── Recording section ───────────────────────────────── -->
     <section class="record-section">
       <Recorder on:recorded={handleRecorded} />
+      <div class="file-row">
+        <button
+          class="file-btn"
+          on:click={handleOpenFile}
+          disabled={$isTranscribing || $isRecording}
+          title="Transcribe an audio file from disk"
+        >
+          Open file…
+        </button>
+        <span class="drop-hint">or drop an audio file anywhere</span>
+      </div>
     </section>
+
+    {#if dragging}
+      <div class="drop-overlay">Drop audio file to transcribe</div>
+    {/if}
 
     <!-- ── Endpoint error ───────────────────────────────────── -->
     {#if $endpointError}
@@ -158,7 +220,56 @@
   /* Record section */
   .record-section {
     flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
   }
+
+  .file-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+  }
+
+  .file-btn {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    color: #94a3b8;
+    font-size: 0.78rem;
+    font-weight: 500;
+    padding: 0.3rem 0.85rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+  .file-btn:hover:not(:disabled) { background: #334155; color: #e2e8f0; }
+  .file-btn:disabled { opacity: 0.4; cursor: default; }
+
+  .drop-hint {
+    font-size: 0.72rem;
+    color: #475569;
+  }
+
+  /* Drag-over overlay */
+  .drop-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(124, 58, 237, 0.15);
+    border: 2px dashed #7c3aed;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #c4b5fd;
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  .layout.drag-over { outline: none; }
 
   .error-banner {
     padding: 0.45rem 0.85rem;

@@ -1,6 +1,6 @@
 import { get } from 'svelte/store';
 import { settings } from './stores.js';
-import { Transcribe, Refine, GetSetupState } from '../../wailsjs/go/main/App';
+import { Transcribe, Refine, OpenAndTranscribeFile, GetSetupState } from '../../wailsjs/go/main/App';
 
 /** Check whether the integrated engine binary and model are present. */
 export async function checkSetupState() {
@@ -31,4 +31,10 @@ export async function transcribe(blob, mimeType) {
 export async function refine(text) {
   const s = get(settings);
   return Refine(text, s);
+}
+
+/** Open a native file picker, transcribe the selected file on the Go side. */
+export async function openAndTranscribeFile() {
+  const s = get(settings);
+  return OpenAndTranscribeFile(s);
 }

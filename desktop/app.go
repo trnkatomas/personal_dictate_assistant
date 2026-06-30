@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+
+	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // Settings holds all user-configurable preferences.
@@ -43,6 +45,28 @@ func (a *App) Transcribe(audioBase64 string, mimeType string, settings Settings)
 		return "", fmt.Errorf("decode audio: %w", err)
 	}
 	return transcribeWhisper(raw, mimeType, settings)
+}
+
+// OpenAndTranscribeFile shows a native file picker, then transcribes the selected
+// audio file directly from disk (no base64 round-trip). Returns empty string if
+// the user cancelled the dialog.
+func (a *App) OpenAndTranscribeFile(s Settings) (string, error) {
+	path, err := wailsRuntime.OpenFileDialog(a.ctx, wailsRuntime.OpenDialogOptions{
+		Title: "Select audio file",
+		Filters: []wailsRuntime.FileFilter{
+			{
+				DisplayName: "Audio files (*.mp3;*.mp4;*.m4a;*.wav;*.flac;*.ogg;*.webm;*.aac)",
+				Pattern:     "*.mp3;*.mp4;*.m4a;*.wav;*.flac;*.ogg;*.webm;*.aac",
+			},
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+	if path == "" {
+		return "", nil // user cancelled
+	}
+	return transcribeFileAt(path, s)
 }
 
 // LoadSettings reads persisted settings from the on-disk config file,
