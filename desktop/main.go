@@ -25,6 +25,13 @@ func main() {
 		},
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
 		OnStartup:        app.startup,
+		// Native OS drag-and-drop delivers real file paths to Go directly,
+		// instead of reading the file into JS and shipping it across the
+		// JS↔Go bridge as a base64 string (which silently truncates for
+		// large files in `wails dev` — https://github.com/wailsapp/wails/issues/4211).
+		DragAndDrop: &options.DragAndDrop{
+			EnableFileDrop: true,
+		},
 		Bind: []interface{}{
 			app,
 		},

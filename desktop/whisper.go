@@ -81,14 +81,19 @@ func runWhisper(binPath, modPath, srcPath string, s Settings) (string, error) {
 	defer cleanup()
 
 	// -np suppresses all non-result output so stdout contains only the transcript.
+	// whisper-cli's own default for -l is "en", not auto-detect — omitting the
+	// flag silently forces English decoding on non-English audio, which causes
+	// hallucination loops and large stretches of the file decoding as empty.
+	lang := s.WhisperLanguage
+	if lang == "" {
+		lang = "auto"
+	}
 	args := []string{
 		"-m", modPath,
 		"-f", wavPath,
 		"--no-timestamps",
 		"-np",
-	}
-	if s.WhisperLanguage != "" {
-		args = append(args, "-l", s.WhisperLanguage)
+		"-l", lang,
 	}
 	if s.WhisperTask == "translate" {
 		args = append(args, "--translate")

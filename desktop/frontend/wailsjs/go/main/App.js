@@ -37,3 +37,7 @@ export function StartDownload(arg1) {
 export function Transcribe(arg1, arg2, arg3) {
   return window['go']['main']['App']['Transcribe'](arg1, arg2, arg3);
 }
+
+export function TranscribeFileAtPath(arg1, arg2) {
+  return window['go']['main']['App']['TranscribeFileAtPath'](arg1, arg2);
+}

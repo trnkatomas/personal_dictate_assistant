@@ -70,6 +70,14 @@ func (a *App) OpenAndTranscribeFile(s Settings) (string, error) {
 	return transcribeFileAt(path, s)
 }
 
+// TranscribeFileAtPath transcribes a file already on disk, given its absolute
+// path. Used by the native OS drag-and-drop handler (see main.go's
+// DragAndDrop.EnableFileDrop), which delivers real file paths — avoiding the
+// base64-over-IPC transfer that Transcribe uses for in-browser recordings.
+func (a *App) TranscribeFileAtPath(path string, s Settings) (string, error) {
+	return transcribeFileAt(path, s)
+}
+
 // LoadSettings reads persisted settings from the on-disk config file,
 // falling back to defaults if none exist yet.
 func (a *App) LoadSettings() (Settings, error) {

@@ -1,6 +1,7 @@
 <script>
   import { get } from 'svelte/store';
   import { onMount } from 'svelte';
+  import { OnFileDrop, OnFileDropOff } from '../wailsjs/runtime/runtime';
   import Recorder       from '$lib/components/Recorder.svelte';
   import TranscriptPane from '$lib/components/TranscriptPane.svelte';
   import RefinementPane from '$lib/components/RefinementPane.svelte';
@@ -13,7 +14,7 @@
     showSettings, showWizard, showDiff, audioBlob, endpointError,
     initSettings
   } from '$lib/stores.js';
-  import { transcribe, openAndTranscribeFile, checkSetupState } from '$lib/api.js';
+  import { transcribe, openAndTranscribeFile, transcribeFilePath, checkSetupState } from '$lib/api.js';
 
   // Called when the Recorder component finishes a mic recording.
   async function handleRecorded(e) {
@@ -47,19 +48,26 @@
   }
 
   // Drag & drop: accept audio files dropped anywhere on the window.
+  // File content is read via Wails' native OS drag-and-drop (main.go's
+  // DragAndDrop.EnableFileDrop), which delivers real file paths — the
+  // browser's dataTransfer.files + base64-over-IPC path silently truncates
+  // large files in `wails dev` (https://github.com/wailsapp/wails/issues/4211).
   let dragging = false;
   function onDragOver(e) { e.preventDefault(); dragging = true; }
   function onDragLeave()  { dragging = false; }
-  async function onDrop(e) {
-    e.preventDefault();
+  // Prevent the browser's default "navigate to dropped file" behavior;
+  // actual transcription happens in the OnFileDrop handler below.
+  function onDrop(e) { e.preventDefault(); dragging = false; }
+
+  async function handleFileDrop(x, y, paths) {
     dragging = false;
-    const file = e.dataTransfer?.files?.[0];
-    if (!file) return;
+    const path = paths?.[0];
+    if (!path) return;
     endpointError.set(null);
     refinedText.set('');
     isTranscribing.set(true);
     try {
-      rawText.set(await transcribe(file, file.type || 'audio/webm'));
+      rawText.set(await transcribeFilePath(path));
     } catch (err) {
       endpointError.set({ source: 'Whisper', message: err?.message ?? String(err) });
     } finally {
@@ -87,7 +95,11 @@
       }
     }
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    OnFileDrop(handleFileDrop, false);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      OnFileDropOff();
+    };
   });
 </script>
 

@@ -19,3 +19,5 @@ export function SaveSettings(arg1:main.Settings):Promise<void>;
 export function StartDownload(arg1:string):Promise<void>;
 
 export function Transcribe(arg1:string,arg2:string,arg3:main.Settings):Promise<string>;
+
+export function TranscribeFileAtPath(arg1:string,arg2:main.Settings):Promise<string>;

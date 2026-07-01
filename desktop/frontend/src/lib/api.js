@@ -1,6 +1,6 @@
 import { get } from 'svelte/store';
 import { settings } from './stores.js';
-import { Transcribe, Refine, OpenAndTranscribeFile, GetSetupState } from '../../wailsjs/go/main/App';
+import { Transcribe, Refine, OpenAndTranscribeFile, TranscribeFileAtPath, GetSetupState } from '../../wailsjs/go/main/App';
 
 /** Check whether the integrated engine binary and model are present. */
 export async function checkSetupState() {
@@ -37,4 +37,10 @@ export async function refine(text) {
 export async function openAndTranscribeFile() {
   const s = get(settings);
   return OpenAndTranscribeFile(s);
+}
+
+/** Transcribe a file already on disk (used by native OS drag-and-drop). */
+export async function transcribeFilePath(path) {
+  const s = get(settings);
+  return TranscribeFileAtPath(path, s);
 }

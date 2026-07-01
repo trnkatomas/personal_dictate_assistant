@@ -1,14 +1,21 @@
 <script>
+  import { EventsOn, EventsOff } from '../../../wailsjs/runtime/runtime';
   import { settings, refinedText, isRefining, rawText, endpointError } from '$lib/stores.js';
   import { refine } from '$lib/api.js';
 
   let copied = false;
+  let progress = null; // { current, total } | null — only set for multi-chunk refinements
 
   async function handleRefine() {
     if (!$rawText.trim()) return;
     endpointError.set(null);
     refinedText.set('');
     isRefining.set(true);
+    progress = null;
+
+    EventsOn('refine:progress', (p) => {
+      progress = p.done ? null : { current: p.current, total: p.total };
+    });
 
     try {
       refinedText.set(await refine($rawText));
@@ -16,6 +23,8 @@
       endpointError.set({ source: 'Refinement', message: err?.message ?? String(err) });
     } finally {
       isRefining.set(false);
+      progress = null;
+      EventsOff('refine:progress');
     }
   }
 
@@ -31,7 +40,9 @@
     <h2>Refined</h2>
     <div class="pane-actions">
       {#if $isRefining}
-        <span class="badge loading">Refining…</span>
+        <span class="badge loading">
+          {progress ? `Refining ${progress.current}/${progress.total}…` : 'Refining…'}
+        </span>
       {:else if $refinedText}
         <button class="action-btn" on:click={copy}>{copied ? '✓ Copied' : 'Copy'}</button>
       {/if}
