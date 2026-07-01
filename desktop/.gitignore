@@ -1,0 +1,8 @@
+build/bin
+node_modules
+frontend/dist
+# compiled dev binary
+desktop
+# macOS metadata
+.DS_Store
+build/.DS_Store

@@ -17,53 +17,5 @@ services:
     #           count: all
     #           capabilities: [gpu]
 
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama-data:/root/.ollama
-    # OLLAMA_ORIGINS no longer needed — the SvelteKit server proxies to Ollama
-    # server-to-server, so the browser never talks to it directly.
-    # Start server, wait for it, pull model, keep serving.
-    # Uses full binary path (/bin/ollama) to avoid PATH issues in sh.
-    # Pull is a no-op when the model is already cached in the volume.
-    entrypoint:
-      - /bin/sh
-      - -c
-      - |
-        /bin/ollama serve &
-        SERVE_PID=$!
-        echo "[ollama-init] waiting for server..."
-        until /bin/ollama list >/dev/null 2>&1; do sleep 2; done
-        echo "[ollama-init] pulling gemma3:1b..."
-        /bin/ollama pull gemma4:e2b
-        echo "[ollama-init] model ready."
-        wait $SERVE_PID
-    healthcheck:
-      test: ["CMD", "/bin/ollama", "list"]
-      interval: 10s
-      timeout: 10s
-      retries: 15
-      start_period: 30s
-    # For NVIDIA GPU support uncomment:
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
-
-  app:
-    build:
-      context: ./app
-    ports:
-      - "3000:3000"
-    depends_on:
-      - whisper
-      - ollama
-
 volumes:
   whisper-models:
-  ollama-data:
