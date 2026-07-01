@@ -17,7 +17,7 @@ Grab the latest build for your platform from the
 [Releases page](https://github.com/trnkatomas/personal_dictate_assistant/releases):
 
 - **macOS** — `dictate-assistant-macos-universal.zip` (Apple Silicon + Intel)
-- **Windows** — `dictate-assistant-amd64-installer.exe`
+- **Windows** — `dictate-assistant.exe` (standalone, no installer needed)
 - **Linux** — `dictate-assistant-linux-amd64.tar.gz`
 
 On first launch, a setup wizard detects your hardware, recommends a Whisper
