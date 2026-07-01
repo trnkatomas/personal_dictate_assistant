@@ -42,7 +42,7 @@ jobs:
           name: macos
           path: desktop/dictate-assistant-macos-universal.zip
 
-  # ── Windows (amd64, NSIS installer) ──────────────────────────────────────────
+  # ── Windows (amd64, standalone .exe) ──────────────────────────────────────────
   build-windows:
     runs-on: windows-latest
     steps:
@@ -59,14 +59,16 @@ jobs:
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
+      # No -nsis: the runner doesn't have makensis preinstalled, and a plain
+      # standalone .exe (WebView2 ships with Windows 10/11) is enough here.
       - name: Build (windows/amd64)
         working-directory: desktop
-        run: wails build -platform windows/amd64 -nsis -clean
+        run: wails build -platform windows/amd64 -clean
 
       - uses: actions/upload-artifact@v7
         with:
           name: windows
-          path: desktop/build/bin/dictate-assistant-amd64-installer.exe
+          path: desktop/build/bin/dictate-assistant.exe
 
   # ── Linux (amd64) ────────────────────────────────────────────────────────────
   build-linux:
