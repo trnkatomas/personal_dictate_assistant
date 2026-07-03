@@ -99,14 +99,32 @@ func runWhisper(binPath, modPath, srcPath string, s Settings) (string, error) {
 		args = append(args, "--translate")
 	}
 
-	cmd := exec.Command(binPath, args...)
-	var stderrBuf bytes.Buffer
-	cmd.Stderr = &stderrBuf
-	stdout, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("whisper-cli: %s", strings.TrimSpace(stderrBuf.String()))
+	// If whisper-cli crashes right after loading a CPU backend variant (see
+	// engine_variants.go), quarantine that variant and rerun — the scorer
+	// picks the next-fastest one. Bounded by the number of variants shipped.
+	const maxVariantRetries = 8
+	for attempt := 0; ; attempt++ {
+		cmd := exec.Command(binPath, args...)
+		var stderrBuf bytes.Buffer
+		cmd.Stderr = &stderrBuf
+		stdout, err := cmd.Output()
+		if err == nil {
+			return strings.TrimSpace(string(stdout)), nil
+		}
+
+		stderr := strings.TrimSpace(stderrBuf.String())
+		if attempt < maxVariantRetries && looksLikeBackendCrash(stderr) {
+			if lib := loadedCPUVariant(stderr); lib != "" {
+				if qErr := quarantineCPUVariant(binPath, lib); qErr == nil {
+					continue
+				}
+			}
+		}
+		if stderr == "" {
+			stderr = err.Error()
+		}
+		return "", fmt.Errorf("whisper-cli: %s", stderr)
 	}
-	return strings.TrimSpace(string(stdout)), nil
 }
 
 // convertToWAV converts any audio file to 16 kHz mono WAV using ffmpeg.
