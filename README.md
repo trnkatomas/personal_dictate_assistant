@@ -55,6 +55,13 @@ The first time you launch the app, a wizard walks through:
    no package manager needed.
 4. **Ready** — drop straight into the main app.
 
+> **CPU compatibility:** on Windows/Linux the engine ships several
+> CPU-optimized builds and automatically picks the fastest one your
+> processor supports. If the chosen build turns out to crash on your
+> particular CPU (seen on some AMD models), the app quarantines it and
+> silently retries with the next one — no action needed, and it only
+> happens once per machine.
+
 > **ffmpeg on Windows/Linux:** the wizard doesn't install `ffmpeg` for you
 > on these platforms (no Homebrew equivalent assumed). If it's missing,
 > transcription will show an install hint — `winget install ffmpeg` on
