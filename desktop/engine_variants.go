@@ -70,6 +70,10 @@ func isBaselineCPUVariant(libPath string) bool {
 	return name == "ggml-cpu" || name == "ggml-cpu-x64"
 }
 
+func quarantineDir(binPath string) string {
+	return filepath.Join(filepath.Dir(binPath), "disabled-variants")
+}
+
 // quarantineCPUVariant moves a crashing variant library out of the engine
 // directory so ggml's scanner can't select it again. Refuses to touch
 // libraries outside the managed directory (e.g. a Homebrew install — not
@@ -83,7 +87,7 @@ func quarantineCPUVariant(binPath, libPath string) error {
 	if isBaselineCPUVariant(libPath) {
 		return fmt.Errorf("refusing to quarantine baseline CPU backend %s", filepath.Base(libPath))
 	}
-	qDir := filepath.Join(binDir, "disabled-variants")
+	qDir := quarantineDir(binPath)
 	if err := os.MkdirAll(qDir, 0o755); err != nil {
 		return err
 	}
@@ -93,4 +97,34 @@ func quarantineCPUVariant(binPath, libPath string) error {
 	log.Printf("whisper-cli crashed after loading %s — quarantined it, retrying with the next CPU variant",
 		filepath.Base(libPath))
 	return nil
+}
+
+// restoreAllQuarantinedVariants moves every library sitting in the
+// quarantine directory back into the engine directory — including ones
+// quarantined in a previous, separate run (e.g. by an earlier version of
+// this logic that quarantined the whole way down to the baseline before
+// this safeguard existed). Used when a retry sequence still ends in failure
+// even on the last-resort baseline variant: strong evidence the crash was
+// never about a bad variant in the first place (a genuinely broken variant
+// would let some *other* variant succeed), so there is no reason to leave
+// healthy, faster builds permanently disabled for a problem they didn't
+// cause — on this machine or from an earlier session.
+func restoreAllQuarantinedVariants(binPath string) {
+	qDir := quarantineDir(binPath)
+	entries, err := os.ReadDir(qDir)
+	if err != nil {
+		return // nothing quarantined (or dir doesn't exist) — nothing to do
+	}
+	binDir := filepath.Dir(binPath)
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if err := os.Rename(filepath.Join(qDir, name), filepath.Join(binDir, name)); err != nil {
+			log.Printf("could not restore quarantined CPU backend %s: %v", name, err)
+			continue
+		}
+		log.Printf("restored CPU backend %s — the earlier crash wasn't specific to it", name)
+	}
 }

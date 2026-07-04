@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -120,11 +121,46 @@ func runWhisper(binPath, modPath, srcPath string, s Settings) (string, error) {
 				}
 			}
 		}
-		if stderr == "" {
-			stderr = err.Error()
-		}
-		return "", fmt.Errorf("whisper-cli: %s", stderr)
+
+		// Every variant we tried — including, in the worst case, the
+		// universally-compatible baseline — crashed the same way. A
+		// genuinely bad variant would have let some *other* variant succeed;
+		// failing even on the baseline means the crash was never about the
+		// variant. Sweep the whole quarantine directory (not just what this
+		// call quarantined) so healthy, faster builds don't stay disabled
+		// forever because of an earlier session's mistaken quarantine, too.
+		restoreAllQuarantinedVariants(binPath)
+		return "", fmt.Errorf("whisper-cli: %s", diagnoseCrash(s.ModelName, exitCode(err), stderr))
 	}
+}
+
+// exitCode extracts the process exit code from cmd.Output()'s error, or -1
+// if the process never started (e.g. binPath itself is missing/unrunnable).
+func exitCode(err error) int {
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode()
+	}
+	return -1
+}
+
+// diagnoseCrash builds an actionable message for a whisper-cli failure that
+// survived every CPU-variant retry. Reaching this point means the crash
+// wasn't variant-specific, so the likely causes are environmental: not
+// enough RAM for the selected model, or a missing C++ runtime dependency —
+// both far more common on an arbitrary end-user Windows machine than a
+// genuine ggml bug, and both fixable without a code change.
+func diagnoseCrash(modelName string, code int, stderr string) string {
+	if stderr == "" {
+		stderr = fmt.Sprintf("(no output — process exit code %d)", code)
+	} else {
+		stderr = fmt.Sprintf("%s (exit code %d)", stderr, code)
+	}
+	return stderr + "\n\nThis crash happened the same way on every CPU build available, " +
+		"including the safest baseline one, so it's unlikely to be about your CPU. Two " +
+		"common causes on Windows:\n" +
+		" • Not enough free RAM for the \"" + modelName + "\" model — try a smaller model in Settings.\n" +
+		" • Missing Visual C++ Redistributable — install it from https://aka.ms/vs/17/release/vc_redist.x64.exe"
 }
 
 // convertToWAV converts any audio file to 16 kHz mono WAV using ffmpeg.
