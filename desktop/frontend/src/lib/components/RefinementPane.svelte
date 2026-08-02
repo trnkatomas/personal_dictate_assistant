@@ -2,6 +2,7 @@
   import { EventsOn, EventsOff } from '../../../wailsjs/runtime/runtime';
   import { settings, refinedText, isRefining, rawText, endpointError } from '$lib/stores.js';
   import { refine } from '$lib/api.js';
+  import { t } from '$lib/i18n';
 
   let copied = false;
   let progress = null; // { current, total } | null — only set for multi-chunk refinements
@@ -20,7 +21,7 @@
     try {
       refinedText.set(await refine($rawText));
     } catch (err) {
-      endpointError.set({ source: 'Refinement', message: err?.message ?? String(err) });
+      endpointError.set({ source: $t.app.errorSourceRefinement, message: err?.message ?? String(err) });
     } finally {
       isRefining.set(false);
       progress = null;
@@ -37,14 +38,14 @@
 
 <div class="pane">
   <div class="pane-header">
-    <h2>Refined</h2>
+    <h2>{$t.refine.title}</h2>
     <div class="pane-actions">
       {#if $isRefining}
         <span class="badge loading">
-          {progress ? `Refining ${progress.current}/${progress.total}…` : 'Refining…'}
+          {progress ? $t.refine.refiningProgress(progress.current, progress.total) : $t.refine.refining}
         </span>
       {:else if $refinedText}
-        <button class="action-btn" on:click={copy}>{copied ? '✓ Copied' : 'Copy'}</button>
+        <button class="action-btn" on:click={copy}>{copied ? $t.common.copied : $t.common.copy}</button>
       {/if}
     </div>
   </div>
@@ -55,8 +56,8 @@
       class="prompt-input"
       bind:value={$settings.refinementPrompt}
       rows="2"
-      placeholder="Refinement instruction prompt…"
-      aria-label="Refinement prompt"
+      placeholder={$t.refine.promptPlaceholder}
+      aria-label={$t.refine.promptAriaLabel}
     ></textarea>
     <button
       class="refine-btn"
@@ -70,16 +71,16 @@
       {:else}
         ↗
       {/if}
-      Refine
+      {$t.refine.refineBtn}
     </button>
   </div>
 
   <textarea
     class="pane-body"
     bind:value={$refinedText}
-    placeholder="Refined text will appear here…"
+    placeholder={$t.refine.placeholder}
     spellcheck="true"
-    aria-label="Refined text"
+    aria-label={$t.refine.ariaLabel}
   ></textarea>
 </div>
 

@@ -1,6 +1,7 @@
 <script>
   import { rawText, refinedText } from '$lib/stores.js';
   import { diffWords } from 'diff';
+  import { t } from '$lib/i18n';
 
   $: parts = ($rawText && $refinedText)
     ? diffWords($rawText, $refinedText)
@@ -13,14 +14,14 @@
 <div class="diff-pane">
   <div class="diff-header">
     <div class="diff-title">
-      <span class="side old">Transcription</span>
+      <span class="side old">{$t.diff.transcriptionSide}</span>
       <span class="arrow">→</span>
-      <span class="side new">Refined</span>
+      <span class="side new">{$t.diff.refinedSide}</span>
     </div>
     {#if parts.length > 0}
       <div class="stats">
-        <span class="stat del">−{removedCount} words</span>
-        <span class="stat ins">+{addedCount} words</span>
+        <span class="stat del">{$t.diff.removedWords(removedCount)}</span>
+        <span class="stat ins">{$t.diff.addedWords(addedCount)}</span>
       </div>
     {/if}
   </div>
@@ -41,8 +42,8 @@
     </div>
   {:else}
     <div class="empty">
-      <p>Nothing to diff yet.</p>
-      <p class="hint">Record → transcribe → refine, then come back here.</p>
+      <p>{$t.diff.emptyTitle}</p>
+      <p class="hint">{$t.diff.emptyHint}</p>
     </div>
   {/if}
 </div>

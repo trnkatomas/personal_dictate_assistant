@@ -15,6 +15,7 @@
     initSettings
   } from '$lib/stores.js';
   import { transcribe, openAndTranscribeFile, transcribeFilePath, checkSetupState } from '$lib/api.js';
+  import { t, initLocale } from '$lib/i18n';
 
   // Called when the Recorder component finishes a mic recording.
   async function handleRecorded(e) {
@@ -26,7 +27,7 @@
     try {
       rawText.set(await transcribe(blob, mimeType));
     } catch (err) {
-      endpointError.set({ source: 'Whisper', message: err?.message ?? String(err) });
+      endpointError.set({ source: $t.app.errorSourceWhisper, message: err?.message ?? String(err) });
     } finally {
       isTranscribing.set(false);
     }
@@ -41,7 +42,7 @@
       const text = await openAndTranscribeFile();
       if (text) rawText.set(text);
     } catch (err) {
-      endpointError.set({ source: 'Whisper', message: err?.message ?? String(err) });
+      endpointError.set({ source: $t.app.errorSourceWhisper, message: err?.message ?? String(err) });
     } finally {
       isTranscribing.set(false);
     }
@@ -69,7 +70,7 @@
     try {
       rawText.set(await transcribeFilePath(path));
     } catch (err) {
-      endpointError.set({ source: 'Whisper', message: err?.message ?? String(err) });
+      endpointError.set({ source: $t.app.errorSourceWhisper, message: err?.message ?? String(err) });
     } finally {
       isTranscribing.set(false);
     }
@@ -86,6 +87,7 @@
 
   onMount(async () => {
     await initSettings();
+    initLocale(); // best-effort OS-locale detection for uiLanguage === 'auto'
     const s = get(settings);
     // Show setup wizard if integrated mode is selected but engine isn't ready.
     if (s.mode === 'integrated') {
@@ -127,17 +129,17 @@
             class="tool-btn"
             class:active={$showDiff}
             on:click={() => showDiff.update((v) => !v)}
-            title="Toggle diff view"
+            title={$t.app.diffToggleTitle}
           >
-            ⟷ Diff
+            ⟷ {$t.app.diffToggle}
           </button>
         {/if}
         <button
           class="tool-btn"
           on:click={() => showSettings.set(true)}
-          title="Open settings"
+          title={$t.app.settingsBtnTitle}
         >
-          ⚙ Settings
+          ⚙ {$t.app.settingsBtn}
         </button>
       </div>
     </header>
@@ -150,16 +152,16 @@
           class="file-btn"
           on:click={handleOpenFile}
           disabled={$isTranscribing || $isRecording}
-          title="Transcribe an audio file from disk"
+          title={$t.app.openFileTitle}
         >
-          Open file…
+          {$t.app.openFile}
         </button>
-        <span class="drop-hint">or drop an audio file anywhere</span>
+        <span class="drop-hint">{$t.app.dropHint}</span>
       </div>
     </section>
 
     {#if dragging}
-      <div class="drop-overlay">Drop audio file to transcribe</div>
+      <div class="drop-overlay">{$t.app.dropOverlay}</div>
     {/if}
 
     <!-- ── Endpoint error ───────────────────────────────────── -->

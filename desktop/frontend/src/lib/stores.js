@@ -18,6 +18,7 @@ export const settings = writable({
                       "else untouched, and make sure corrections fit naturally with the " +
                       "surrounding sentence. Return only the corrected text, with no " +
                       "explanations or preamble.",
+  uiLanguage:        'auto',
 });
 
 /** Load persisted settings from the Go backend. Call once on app startup. */
