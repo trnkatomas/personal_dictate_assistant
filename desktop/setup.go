@@ -3,17 +3,21 @@ package main
 import (
 	"archive/tar"
 	"archive/zip"
+	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/shirou/gopsutil/v3/mem"
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -246,6 +250,30 @@ func (a *App) doDownload(ctx context.Context, model string) error {
 		})
 	}
 
+	// A cublas build needs an NVIDIA driver new enough for the CUDA runtime
+	// it was built against — the CPU-variant scoring in pickBestAsset can't
+	// verify that ahead of time, only whether an NVIDIA GPU is present at
+	// all. This is the first point a real check is possible: an actual
+	// whisper-cli run against the model we just confirmed is on disk. If it
+	// fails, fall back to the plain CPU build now rather than let the user
+	// discover it on their first real transcription.
+	if readEngineVariant(binPath) == "cuda" {
+		wailsRuntime.EventsEmit(a.ctx, "download:progress", DownloadProgress{
+			Label:   "Verifying GPU acceleration…",
+			Percent: 100,
+		})
+		if err := smokeTestWhisper(ctx, binPath, modPath); err != nil {
+			log.Printf("cublas build failed its startup check (%v) — falling back to the CPU build", err)
+			wailsRuntime.EventsEmit(a.ctx, "download:progress", DownloadProgress{
+				Label:   "GPU build didn't start correctly — falling back to CPU build…",
+				Percent: 0,
+			})
+			if fbErr := a.downloadBinaryFromGitHub(ctx, binPath, "none"); fbErr != nil {
+				return fmt.Errorf("fall back to CPU build after failed GPU check: %w", fbErr)
+			}
+		}
+	}
+
 	// Persist model name and mode to settings.
 	if err := updateSettingsAfterDownload(model); err != nil {
 		return err
@@ -297,12 +325,21 @@ func fetchLatestRelease(ctx context.Context) (ghRelease, error) {
 	return rel, nil
 }
 
-// pickBestAsset finds the most suitable zip asset for the current platform.
-// For macOS ARM64 it prefers Metal (GPU) over BLAS (CPU-only).
-func pickBestAsset(assets []ghAsset) (url, tag string) {
+// pickBestAsset finds the most suitable zip asset for the given platform and
+// detected GPU. Returns the download URL and an "engine variant" tag
+// ("cuda" | "cpu") that gets persisted alongside the binary (see
+// writeEngineVariant) so later code can tell whether the installed build
+// needs GPU acceleration to function.
+//
+// For macOS ARM64 it prefers Metal (GPU) over BLAS (CPU-only). Note macOS
+// never actually reaches this function — see downloadBinary, which installs
+// via Homebrew there instead — so the darwin cases below are effectively
+// unreachable today but kept for whenever that changes.
+func pickBestAsset(assets []ghAsset, goos, goarch, gpu string) (url, variant string) {
 	type candidate struct {
-		url   string
-		score int
+		url     string
+		variant string
+		score   int
 	}
 	var best candidate
 
@@ -312,7 +349,8 @@ func pickBestAsset(assets []ghAsset) (url, tag string) {
 			continue
 		}
 		score := 0
-		switch runtime.GOOS + "/" + runtime.GOARCH {
+		v := "cpu"
+		switch goos + "/" + goarch {
 		case "darwin/arm64":
 			// Must contain "arm64" — skip anything else (x86, linux, etc.)
 			if !strings.Contains(name, "arm64") {
@@ -349,29 +387,42 @@ func pickBestAsset(assets []ghAsset) (url, tag string) {
 			if !strings.Contains(name, "x64") && !strings.Contains(name, "x86") {
 				continue
 			}
+			// whisper.cpp's Linux releases don't ship a CUDA build at all —
+			// only the CPU one — so gpu is irrelevant here for now.
 			score = 1
 		case "windows/amd64":
 			if !strings.HasSuffix(name, ".zip") || !strings.Contains(name, "x64") {
 				continue // skip Win32 (32-bit) and non-zip assets
 			}
-			if strings.Contains(name, "cublas") {
-				// Needs a matching CUDA runtime installed system-wide; most
-				// users won't have it, so the exe would fail to start.
-				continue
-			}
-			if strings.Contains(name, "blas") {
-				score = 1 // OpenBLAS build: faster, but +50MB dependency DLL
-			} else {
-				score = 2 // plain build: smaller, fewer ways to fail
+			switch {
+			case strings.Contains(name, "cublas"):
+				if gpu != "cuda" {
+					// Multi-hundred-MB download only worth it when we've
+					// actually detected an NVIDIA GPU to use it.
+					continue
+				}
+				// Two CUDA-toolkit variants are published (e.g. 11.8 and
+				// 12.4); prefer the older one for broader driver
+				// compatibility — a newer driver still runs an older CUDA
+				// runtime, but not the reverse.
+				if strings.Contains(name, "11.8") {
+					score, v = 4, "cuda"
+				} else {
+					score, v = 3, "cuda"
+				}
+			case strings.Contains(name, "blas"):
+				score, v = 1, "cpu" // OpenBLAS build: faster, but +50MB dependency DLL
+			default:
+				score, v = 2, "cpu" // plain build: smaller, fewer ways to fail
 			}
 		default:
 			continue
 		}
 		if score > best.score {
-			best = candidate{a.BrowserDownloadURL, score}
+			best = candidate{a.BrowserDownloadURL, v, score}
 		}
 	}
-	return best.url, ""
+	return best.url, best.variant
 }
 
 func (a *App) downloadBinary(ctx context.Context, binPath string) error {
@@ -386,7 +437,7 @@ func (a *App) downloadBinary(ctx context.Context, binPath string) error {
 		// On macOS the standard path is `brew install whisper-cpp`.
 		return a.installViaHomebrew(ctx)
 	default:
-		return a.downloadBinaryFromGitHub(ctx, binPath)
+		return a.downloadBinaryFromGitHub(ctx, binPath, detectGPU())
 	}
 }
 
@@ -420,8 +471,11 @@ func (a *App) installViaHomebrew(ctx context.Context) error {
 }
 
 // downloadBinaryFromGitHub downloads the whisper-cli zip from the latest GitHub release.
-// Used on Linux (and Windows in future). macOS uses Homebrew instead.
-func (a *App) downloadBinaryFromGitHub(ctx context.Context, binPath string) error {
+// Used on Linux and Windows. macOS uses Homebrew instead. gpu is normally the
+// result of detectGPU(), but the CUDA-smoke-test fallback in doDownload
+// passes "none" explicitly to force the plain CPU build regardless of what
+// hardware is actually present.
+func (a *App) downloadBinaryFromGitHub(ctx context.Context, binPath string, gpu string) error {
 	wailsRuntime.EventsEmit(a.ctx, "download:progress", DownloadProgress{
 		Label:   "Checking latest release…",
 		Percent: 0,
@@ -431,7 +485,7 @@ func (a *App) downloadBinaryFromGitHub(ctx context.Context, binPath string) erro
 		return err
 	}
 
-	archiveURL, _ := pickBestAsset(rel.Assets)
+	archiveURL, variant := pickBestAsset(rel.Assets, runtime.GOOS, runtime.GOARCH, gpu)
 	if archiveURL == "" {
 		var names []string
 		for _, a := range rel.Assets {
@@ -468,17 +522,84 @@ func (a *App) downloadBinaryFromGitHub(ctx context.Context, binPath string) erro
 	}
 	defer os.Remove(archiveFile)
 
-	if err := extractEngineArchive(archiveFile, filepath.Dir(binPath), filepath.Base(binPath)); err != nil {
+	// Clear out whatever engine files are currently installed before
+	// extracting — most importantly so falling back from a cublas build
+	// (which bundles several hundred MB of CUDA runtime DLLs) to the plain
+	// CPU build doesn't leave those unused libraries behind. A no-op on a
+	// fresh install, since there's nothing there yet.
+	binDir := filepath.Dir(binPath)
+	if err := resetEngineBinDir(binDir); err != nil {
+		return fmt.Errorf("clear existing engine files: %w", err)
+	}
+
+	if err := extractEngineArchive(archiveFile, binDir, filepath.Base(binPath)); err != nil {
 		return fmt.Errorf("extract binary from archive: %w", err)
 	}
 	if err := os.Chmod(binPath, 0o755); err != nil {
 		return err
+	}
+	if err := writeEngineVariant(binPath, variant); err != nil {
+		// Non-fatal — worst case, the CUDA smoke-test check below defaults
+		// to treating this as a plain CPU build and skips verification.
+		log.Printf("could not persist engine variant marker: %v", err)
 	}
 
 	wailsRuntime.EventsEmit(a.ctx, "download:progress", DownloadProgress{
 		Label:   "Whisper binary",
 		Percent: 100,
 	})
+	return nil
+}
+
+// ── Engine variant tracking (for the CUDA smoke test / fallback below) ───────
+
+// engineVariantMarkerPath returns the path to the small marker file recording
+// which build (cuda-accelerated or plain CPU) is currently installed
+// alongside the binary.
+func engineVariantMarkerPath(binPath string) string {
+	return filepath.Join(filepath.Dir(binPath), ".engine-variant")
+}
+
+func writeEngineVariant(binPath, variant string) error {
+	return os.WriteFile(engineVariantMarkerPath(binPath), []byte(variant), 0o644)
+}
+
+// readEngineVariant returns "cuda" only if a marker file says so; any other
+// case (no marker — e.g. a Homebrew install, or one predating this feature —
+// read error, or an unrecognized value) defaults to "cpu", which is always
+// the safe assumption: it just means the smoke test below is skipped.
+func readEngineVariant(binPath string) string {
+	data, err := os.ReadFile(engineVariantMarkerPath(binPath))
+	if err != nil {
+		return "cpu"
+	}
+	if v := strings.TrimSpace(string(data)); v == "cuda" {
+		return v
+	}
+	return "cpu"
+}
+
+// resetEngineBinDir removes every file directly inside binDir (the currently
+// installed binary and its libraries), leaving subdirectories — notably
+// disabled-variants/, the CPU-backend quarantine dir managed elsewhere —
+// alone. A missing binDir is not an error (nothing to clear on a fresh
+// install).
+func resetEngineBinDir(binDir string) error {
+	entries, err := os.ReadDir(binDir)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if err := os.Remove(filepath.Join(binDir, e.Name())); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -695,6 +816,70 @@ func writeExtractedFile(destPath string, src io.Reader) error {
 		return copyErr
 	}
 	return closeErr
+}
+
+// ── CUDA smoke test ────────────────────────────────────────────────────────
+
+// smokeTestWhisper runs the installed whisper-cli once against a tiny
+// synthetic silent WAV to confirm it actually starts and produces output —
+// the only reliable way to tell a cublas build will work on this machine,
+// since ggml only initializes CUDA when a model is loaded, not at process
+// startup. Bounded by a timeout well beyond what loading a model and
+// transcribing half a second of silence should ever take, so a hung CUDA
+// init can't block setup indefinitely.
+func smokeTestWhisper(ctx context.Context, binPath, modPath string) error {
+	tmpWav, err := os.CreateTemp("", "dictate-smoketest-*.wav")
+	if err != nil {
+		return err
+	}
+	tmpWav.Close()
+	defer os.Remove(tmpWav.Name())
+	if err := writeSilentWAV(tmpWav.Name(), 0.5, 16000); err != nil {
+		return err
+	}
+
+	testCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(testCtx, binPath,
+		"-m", modPath,
+		"-f", tmpWav.Name(),
+		"--no-timestamps",
+		"-np",
+		"-l", "en",
+	)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	return nil
+}
+
+// writeSilentWAV writes a minimal valid 16-bit PCM mono WAV file containing
+// `seconds` of silence at the given sample rate — just enough for whisper-cli
+// to load and run its backend init against, with no real audio needed.
+func writeSilentWAV(path string, seconds float64, sampleRate int) error {
+	numSamples := int(seconds * float64(sampleRate))
+	dataSize := numSamples * 2 // 16-bit mono = 2 bytes/sample
+
+	var buf bytes.Buffer
+	buf.WriteString("RIFF")
+	binary.Write(&buf, binary.LittleEndian, uint32(36+dataSize))
+	buf.WriteString("WAVE")
+	buf.WriteString("fmt ")
+	binary.Write(&buf, binary.LittleEndian, uint32(16)) // fmt chunk size
+	binary.Write(&buf, binary.LittleEndian, uint16(1))  // PCM
+	binary.Write(&buf, binary.LittleEndian, uint16(1))  // mono
+	binary.Write(&buf, binary.LittleEndian, uint32(sampleRate))
+	binary.Write(&buf, binary.LittleEndian, uint32(sampleRate*2)) // byte rate
+	binary.Write(&buf, binary.LittleEndian, uint16(2))            // block align
+	binary.Write(&buf, binary.LittleEndian, uint16(16))           // bits/sample
+	buf.WriteString("data")
+	binary.Write(&buf, binary.LittleEndian, uint32(dataSize))
+	buf.Write(make([]byte, dataSize)) // silence
+
+	return os.WriteFile(path, buf.Bytes(), 0o644)
 }
 
 func updateSettingsAfterDownload(model string) error {
