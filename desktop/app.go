@@ -88,3 +88,10 @@ func (a *App) LoadSettings() (Settings, error) {
 func (a *App) SaveSettings(s Settings) error {
 	return saveSettings(s)
 }
+
+// LogFilePath returns the path to the persistent app log file, so the
+// frontend can show the user where to find it (or an empty string if file
+// logging couldn't be set up on this machine — see setupLogging).
+func (a *App) LogFilePath() string {
+	return logFilePath
+}

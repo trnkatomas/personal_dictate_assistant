@@ -3,8 +3,10 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -68,6 +70,7 @@ func transcribeSubprocess(audio []byte, mimeType string, s Settings) (string, er
 		return "", fmt.Errorf("write temp audio: %w", err)
 	}
 	tmpAudio.Close()
+	log.Printf("transcribe: recorder reported mimeType %q, %d bytes -> %s", mimeType, len(audio), tmpAudio.Name())
 
 	return runWhisper(binPath, modPath, tmpAudio.Name(), s)
 }
@@ -107,24 +110,86 @@ func runWhisper(binPath, modPath, srcPath string, s Settings) (string, error) {
 		cmd := exec.Command(binPath, args...)
 		var stderrBuf bytes.Buffer
 		cmd.Stderr = &stderrBuf
+		log.Printf("whisper-cli attempt %d: %s", attempt+1, cmd.Args)
 		stdout, err := cmd.Output()
 		if err == nil {
+			log.Printf("whisper-cli attempt %d: succeeded", attempt+1)
 			return strings.TrimSpace(string(stdout)), nil
 		}
 
 		stderr := strings.TrimSpace(stderrBuf.String())
-		if attempt < maxVariantRetries && looksLikeBackendCrash(stderr) {
-			if lib := loadedCPUVariant(stderr); lib != "" {
-				if qErr := quarantineCPUVariant(binPath, lib); qErr == nil {
-					continue
+		code := exitCode(err)
+		log.Printf("whisper-cli attempt %d: failed (exit %d): %s", attempt+1, code, stderr)
+
+		// A silent crash right after loading a CPU backend variant (no error
+		// text at all — see looksLikeBackendCrash) is the signature of a bad
+		// variant, and worth retrying against the next-fastest one. Anything
+		// else is a real whisper-cli error (bad audio, missing model, wrong
+		// input format, …) that would just recur identically on retry, so it
+		// must be surfaced as-is rather than run through the CPU-variant
+		// diagnosis below — otherwise the actual error gets buried under an
+		// irrelevant "try a smaller model / install vc_redist" message.
+		if looksLikeBackendCrash(stderr) {
+			if attempt < maxVariantRetries {
+				if lib := loadedCPUVariant(stderr); lib != "" {
+					if qErr := quarantineCPUVariant(binPath, lib); qErr == nil {
+						continue
+					}
 				}
 			}
+			// Every variant we tried — including, in the worst case, the
+			// universally-compatible baseline — crashed the same way. Sweep
+			// the whole quarantine directory (not just what this call
+			// quarantined) so healthy, faster builds don't stay disabled
+			// forever because of an earlier session's mistaken quarantine.
+			restoreAllQuarantinedVariants(binPath)
+			return "", fmt.Errorf("whisper-cli: %s", diagnoseCrash(s.ModelName, code, stderr))
 		}
-		if stderr == "" {
-			stderr = err.Error()
-		}
-		return "", fmt.Errorf("whisper-cli: %s", stderr)
+
+		return "", fmt.Errorf("whisper-cli: %s", plainFailureMessage(code, stderr))
 	}
+}
+
+// plainFailureMessage formats a whisper-cli failure that whisper-cli itself
+// already explained (i.e. not the silent CPU-backend-crash signature — that
+// case goes through diagnoseCrash instead). Returned as close to verbatim as
+// possible: whisper-cli's own error text (e.g. an unsupported input format)
+// is the most useful diagnostic available and must not be buried under
+// unrelated guidance.
+func plainFailureMessage(code int, stderr string) string {
+	if stderr == "" {
+		return fmt.Sprintf("(no output — process exit code %d)", code)
+	}
+	return stderr
+}
+
+// exitCode extracts the process exit code from cmd.Output()'s error, or -1
+// if the process never started (e.g. binPath itself is missing/unrunnable).
+func exitCode(err error) int {
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode()
+	}
+	return -1
+}
+
+// diagnoseCrash builds an actionable message for a whisper-cli failure that
+// survived every CPU-variant retry. Reaching this point means the crash
+// wasn't variant-specific, so the likely causes are environmental: not
+// enough RAM for the selected model, or a missing C++ runtime dependency —
+// both far more common on an arbitrary end-user Windows machine than a
+// genuine ggml bug, and both fixable without a code change.
+func diagnoseCrash(modelName string, code int, stderr string) string {
+	if stderr == "" {
+		stderr = fmt.Sprintf("(no output — process exit code %d)", code)
+	} else {
+		stderr = fmt.Sprintf("%s (exit code %d)", stderr, code)
+	}
+	return stderr + "\n\nThis crash happened the same way on every CPU build available, " +
+		"including the safest baseline one, so it's unlikely to be about your CPU. Two " +
+		"common causes on Windows:\n" +
+		" • Not enough free RAM for the \"" + modelName + "\" model — try a smaller model in Settings.\n" +
+		" • Missing Visual C++ Redistributable — install it from https://aka.ms/vs/17/release/vc_redist.x64.exe"
 }
 
 // convertToWAV converts any audio file to 16 kHz mono WAV using ffmpeg.
@@ -153,7 +218,14 @@ func convertToWAV(srcPath string) (wavPath string, cleanup func(), err error) {
 		"-y", // overwrite
 		wavPath,
 	)
-	if out, err := cmd.CombinedOutput(); err != nil {
+	out, err := cmd.CombinedOutput()
+	// ffmpeg logs the input stream it detected (codec, sample rate, channels)
+	// to stderr on every run, success or failure — the one place that shows
+	// what the browser actually recorded. Logging it unconditionally means a
+	// "wrong input format" problem is visible here instead of only surfacing
+	// as an opaque whisper-cli failure further down the pipeline.
+	log.Printf("ffmpeg %s -> %s: %s", srcPath, wavPath, strings.TrimSpace(string(out)))
+	if err != nil {
 		return wavPath, cleanup, fmt.Errorf("audio conversion: %s", strings.TrimSpace(string(out)))
 	}
 	return wavPath, cleanup, nil

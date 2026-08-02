@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -103,5 +104,47 @@ func TestQuarantineCPUVariant(t *testing.T) {
 	}
 	if err := quarantineCPUVariant(binPath, baseline); err == nil {
 		t.Error("must refuse to quarantine the baseline variant")
+	}
+}
+
+func TestRestoreQuarantinedVariants(t *testing.T) {
+	binDir := t.TempDir()
+	binPath := filepath.Join(binDir, "whisper-cli")
+	skylakex := filepath.Join(binDir, "ggml-cpu-skylakex.dll")
+	haswell := filepath.Join(binDir, "ggml-cpu-haswell.dll")
+	for _, f := range []string{binPath, skylakex, haswell} {
+		if err := os.WriteFile(f, []byte("x"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Quarantine both, simulating a run that cycled through every variant.
+	if err := quarantineCPUVariant(binPath, skylakex); err != nil {
+		t.Fatal(err)
+	}
+	if err := quarantineCPUVariant(binPath, haswell); err != nil {
+		t.Fatal(err)
+	}
+
+	// The terminal failure (baseline crashed too) should put everything back,
+	// including anything quarantined by an earlier, separate run.
+	restoreAllQuarantinedVariants(binPath)
+
+	for _, name := range []string{"ggml-cpu-skylakex.dll", "ggml-cpu-haswell.dll"} {
+		if _, err := os.Stat(filepath.Join(binDir, name)); err != nil {
+			t.Errorf("%s should be back in the engine dir: %v", name, err)
+		}
+		if _, err := os.Stat(filepath.Join(binDir, "disabled-variants", name)); !os.IsNotExist(err) {
+			t.Errorf("%s should no longer be in quarantine", name)
+		}
+	}
+}
+
+func TestDiagnoseCrashMentionsRealCauses(t *testing.T) {
+	msg := diagnoseCrash("large-v3-turbo", 3221225477, "load_backend: loaded CPU backend from x64.dll")
+	for _, want := range []string{"large-v3-turbo", "3221225477", "vc_redist", "RAM"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("diagnostic message missing %q:\n%s", want, msg)
+		}
 	}
 }

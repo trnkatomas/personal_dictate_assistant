@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"log"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -12,6 +13,9 @@ import (
 var assets embed.FS
 
 func main() {
+	_, closeLog := setupLogging()
+	defer closeLog()
+
 	// Create an instance of the app structure
 	app := NewApp()
 
@@ -38,6 +42,9 @@ func main() {
 	})
 
 	if err != nil {
+		// println goes to stderr, which is invisible on a Windows GUI-subsystem
+		// build — log.Printf also reaches the persistent log file set up above.
+		log.Printf("wails.Run failed: %v", err)
 		println("Error:", err.Error())
 	}
 }
