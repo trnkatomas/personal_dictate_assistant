@@ -12,8 +12,11 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
+	"time"
 )
 
 // transcribeWhisper dispatches to the appropriate transcription backend based on settings.Mode.
@@ -45,7 +48,7 @@ func transcribeFileAt(filePath string, s Settings) (string, error) {
 
 // transcribeSubprocess invokes the local whisper-cli binary and returns the transcript.
 // Requires setup to have been completed via the wizard (binary + model downloaded).
-func transcribeSubprocess(audio []byte, mimeType string, s Settings) (string, error) {
+func transcribeSubprocess(audio []byte, mimeType string, s Settings) (transcript string, err error) {
 	if s.ModelName == "" {
 		return "", fmt.Errorf("no model selected — run the setup wizard")
 	}
@@ -60,28 +63,49 @@ func transcribeSubprocess(audio []byte, mimeType string, s Settings) (string, er
 	}
 
 	// Write audio to a temp file; whisper-cli needs a file path, not stdin.
-	tmpAudio, err := os.CreateTemp("", "dictate-audio-*"+audioExt(mimeType))
-	if err != nil {
-		return "", fmt.Errorf("create temp audio: %w", err)
+	tmpAudio, cerr := os.CreateTemp("", "dictate-audio-*"+audioExt(mimeType))
+	if cerr != nil {
+		return "", fmt.Errorf("create temp audio: %w", cerr)
 	}
-	defer os.Remove(tmpAudio.Name())
-	if _, err := tmpAudio.Write(audio); err != nil {
+	tmpPath := tmpAudio.Name()
+	// On success, this temp recording served its purpose and is deleted like
+	// always. On failure, it's the one artifact that shows exactly what the
+	// browser recorded — kept in failed-clips instead of deleted so a "wrong
+	// input format" complaint can actually be inspected afterward.
+	defer func() {
+		if err != nil {
+			saveFailedClip(tmpPath)
+		} else {
+			os.Remove(tmpPath)
+		}
+	}()
+	if _, werr := tmpAudio.Write(audio); werr != nil {
 		tmpAudio.Close()
-		return "", fmt.Errorf("write temp audio: %w", err)
+		return "", fmt.Errorf("write temp audio: %w", werr)
 	}
 	tmpAudio.Close()
-	log.Printf("transcribe: recorder reported mimeType %q, %d bytes -> %s", mimeType, len(audio), tmpAudio.Name())
+	log.Printf("transcribe: recorder reported mimeType %q, %d bytes -> %s", mimeType, len(audio), tmpPath)
 
-	return runWhisper(binPath, modPath, tmpAudio.Name(), s)
+	return runWhisper(binPath, modPath, tmpPath, s)
 }
 
 // runWhisper converts srcPath to WAV if needed, then invokes whisper-cli.
-func runWhisper(binPath, modPath, srcPath string, s Settings) (string, error) {
+func runWhisper(binPath, modPath, srcPath string, s Settings) (transcript string, err error) {
 	wavPath, cleanup, err := convertToWAV(srcPath)
+	// The converted WAV is exactly what whisper-cli actually decodes, so on
+	// failure it's kept in failed-clips instead of deleted — the same
+	// reasoning as the raw recording in transcribeSubprocess. On success
+	// it's just a transient conversion artifact, cleaned up as before.
+	defer func() {
+		if err != nil {
+			saveFailedClip(wavPath)
+		} else {
+			cleanup()
+		}
+	}()
 	if err != nil {
 		return "", err
 	}
-	defer cleanup()
 
 	// -np suppresses all non-result output so stdout contains only the transcript.
 	// whisper-cli's own default for -l is "en", not auto-detect — omitting the
@@ -229,6 +253,90 @@ func convertToWAV(srcPath string) (wavPath string, cleanup func(), err error) {
 		return wavPath, cleanup, fmt.Errorf("audio conversion: %s", strings.TrimSpace(string(out)))
 	}
 	return wavPath, cleanup, nil
+}
+
+// ── Failed-clip retention ────────────────────────────────────────────────────
+
+// maxFailedClips bounds how many files failedClipsDir accumulates. Each
+// failed transcription can save up to two files (raw recording + converted
+// WAV), so this is a file count, not a failure count.
+const maxFailedClips = 10
+
+// failedClipsDir returns the directory failed transcription audio is kept
+// in for inspection, alongside the persistent log file (see logging.go).
+func failedClipsDir() (string, error) {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	d := filepath.Join(dir, settingsAppDirName, "failed-clips")
+	if err := os.MkdirAll(d, 0o755); err != nil {
+		return "", err
+	}
+	return d, nil
+}
+
+// saveFailedClip moves path into failedClipsDir instead of deleting it, so a
+// transcription failure — e.g. a "wrong input format" complaint — can
+// actually be inspected afterward rather than vanishing with the temp file
+// as soon as the request returns. Best effort: path is simply removed if
+// anything here fails, since losing the diagnostic clip must never surface
+// as (or mask) the real transcription error.
+func saveFailedClip(path string) {
+	if path == "" {
+		return
+	}
+	if _, err := os.Stat(path); err != nil {
+		return // already gone — nothing to save
+	}
+
+	dir, err := failedClipsDir()
+	if err != nil {
+		log.Printf("could not save failed clip (no failed-clips dir): %v", err)
+		os.Remove(path)
+		return
+	}
+
+	dest := filepath.Join(dir, time.Now().Format("20060102-150405.000000")+"-"+filepath.Base(path))
+	if err := os.Rename(path, dest); err != nil {
+		log.Printf("could not save failed clip %s: %v", path, err)
+		os.Remove(path)
+		return
+	}
+	log.Printf("kept failed transcription audio at %s for inspection", dest)
+	pruneFailedClips(dir)
+}
+
+// pruneFailedClips keeps only the maxFailedClips most recently modified
+// files in dir, deleting the rest, so failures accumulating over time don't
+// grow the directory unbounded.
+func pruneFailedClips(dir string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	type fileInfo struct {
+		name    string
+		modTime time.Time
+	}
+	files := make([]fileInfo, 0, len(entries))
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		files = append(files, fileInfo{e.Name(), info.ModTime()})
+	}
+	if len(files) <= maxFailedClips {
+		return
+	}
+	sort.Slice(files, func(i, j int) bool { return files[i].modTime.After(files[j].modTime) })
+	for _, f := range files[maxFailedClips:] {
+		os.Remove(filepath.Join(dir, f.name))
+	}
 }
 
 // ffmpegInstallHint returns a platform-specific instruction for installing
