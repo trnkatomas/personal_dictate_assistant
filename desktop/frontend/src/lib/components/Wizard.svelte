@@ -26,15 +26,12 @@
     { id: 'large-v3',       label: 'Large v3',    size: '1.5 GB',  desc: 'Maximum accuracy; larger download with marginal gain over Turbo' },
   ];
 
-  function recommendModel({ gpu, ramGB, locale }) {
-    const nonEnglish = !locale.startsWith('en');
-    if (gpu === 'apple_silicon') {
-      // Large Turbo matches Large v3 accuracy on Apple Silicon with Metal,
-      // at half the size — always prefer it over the full model.
-      return ramGB < 8 ? 'medium' : 'large-v3-turbo';
-    }
-    if (gpu === 'cuda') return 'large-v3';
-    return nonEnglish ? 'medium' : 'small';
+  // Large Turbo is the recommended default across the board — near-identical
+  // accuracy to Large v3 at roughly half the size and noticeably faster.
+  // Large v3 stays in the model list below for anyone who deliberately wants
+  // the marginal extra accuracy, but it's never the auto-picked default.
+  function recommendModel(_systemInfo) {
+    return 'large-v3-turbo';
   }
 
   function gpuLabel(gpu) {
