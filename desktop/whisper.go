@@ -115,9 +115,15 @@ func runWhisper(binPath, modPath, srcPath string, s Settings) (transcript string
 	if lang == "" {
 		lang = "auto"
 	}
+	// whisper-cli decodes its own command-line arguments through the ANSI
+	// code page on Windows, not UTF-8 — a path containing a non-ASCII
+	// character (e.g. a username with a diacritic) can get silently
+	// corrupted before whisper-cli ever sees it, causing it to fail to open
+	// the file with no error text at all. Converting to the (pure-ASCII)
+	// short path sidesteps that entirely; see shortpath_windows.go.
 	args := []string{
-		"-m", modPath,
-		"-f", wavPath,
+		"-m", toShortPath(modPath),
+		"-f", toShortPath(wavPath),
 		"--no-timestamps",
 		"-np",
 		"-l", lang,
