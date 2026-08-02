@@ -841,9 +841,12 @@ func smokeTestWhisper(ctx context.Context, binPath, modPath string) error {
 	testCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
+	// See shortpath_windows.go: a non-ASCII path here would defeat the point
+	// of the smoke test on Windows, since it can fail for that reason alone
+	// regardless of whether the GPU build actually works.
 	cmd := exec.CommandContext(testCtx, binPath,
-		"-m", modPath,
-		"-f", tmpWav.Name(),
+		"-m", toShortPath(modPath),
+		"-f", toShortPath(tmpWav.Name()),
 		"--no-timestamps",
 		"-np",
 		"-l", "en",
