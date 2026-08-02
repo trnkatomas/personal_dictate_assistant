@@ -1,6 +1,7 @@
 <script>
   import { createEventDispatcher, onDestroy, onMount } from 'svelte';
   import { isRecording } from '$lib/stores.js';
+  import { t } from '$lib/i18n';
 
   const dispatch = createEventDispatcher();
 
@@ -43,7 +44,7 @@
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
     } catch (e) {
-      alert(`Microphone access denied: ${e.message}`);
+      alert($t.recorder.micDenied(e.message));
       return;
     }
 
@@ -151,14 +152,14 @@
     class="record-btn"
     class:recording={$isRecording}
     on:click={toggle}
-    title={$isRecording ? 'Stop recording (Space)' : 'Start recording (Space)'}
+    title={$isRecording ? $t.recorder.stopTitle : $t.recorder.startTitle}
   >
     {#if $isRecording}
       <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
-      Stop
+      {$t.recorder.stop}
     {:else}
       <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><circle cx="12" cy="12" r="7"/></svg>
-      Record
+      {$t.recorder.record}
     {/if}
   </button>
 </div>

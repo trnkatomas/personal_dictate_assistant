@@ -20,6 +20,8 @@ type Settings struct {
 	RefinementURL     string `json:"refinementUrl"`    // OpenAI-compatible base URL, e.g. "http://localhost:11434/v1"
 	RefinementModel   string `json:"refinementModel"`  // e.g. "qwen3:1.7b"
 	RefinementPrompt  string `json:"refinementPrompt"` // editable system prompt sent to the refinement model
+
+	UILanguage string `json:"uiLanguage"` // "auto" | "en" | "cs" — UI display language, not WhisperLanguage
 }
 
 // App is the Wails application struct. All exported methods are bound to the JS frontend.

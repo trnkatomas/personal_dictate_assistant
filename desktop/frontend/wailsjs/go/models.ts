@@ -10,6 +10,7 @@ export namespace main {
 	    refinementUrl: string;
 	    refinementModel: string;
 	    refinementPrompt: string;
+	    uiLanguage: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -26,6 +27,7 @@ export namespace main {
 	        this.refinementUrl = source["refinementUrl"];
 	        this.refinementModel = source["refinementModel"];
 	        this.refinementPrompt = source["refinementPrompt"];
+	        this.uiLanguage = source["uiLanguage"];
 	    }
 	}
 	export class SetupState {

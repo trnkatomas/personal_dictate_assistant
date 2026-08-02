@@ -1,5 +1,6 @@
 <script>
   import { rawText, isTranscribing } from '$lib/stores.js';
+  import { t } from '$lib/i18n';
 
   let copied = false;
 
@@ -12,12 +13,12 @@
 
 <div class="pane">
   <div class="pane-header">
-    <h2>Transcription</h2>
+    <h2>{$t.transcript.title}</h2>
     <div class="pane-actions">
       {#if $isTranscribing}
-        <span class="badge loading">Transcribing…</span>
+        <span class="badge loading">{$t.transcript.transcribing}</span>
       {:else if $rawText}
-        <button class="action-btn" on:click={copy}>{copied ? '✓ Copied' : 'Copy'}</button>
+        <button class="action-btn" on:click={copy}>{copied ? $t.common.copied : $t.common.copy}</button>
       {/if}
     </div>
   </div>
@@ -25,9 +26,9 @@
   <textarea
     class="pane-body"
     bind:value={$rawText}
-    placeholder="Raw transcription will appear here after recording…"
+    placeholder={$t.transcript.placeholder}
     spellcheck="true"
-    aria-label="Raw transcription"
+    aria-label={$t.transcript.ariaLabel}
   ></textarea>
 </div>
 

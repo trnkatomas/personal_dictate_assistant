@@ -1,0 +1,125 @@
+// Czech dictionary. Keep this in sync with en.js — every key here should
+// have an English counterpart, and vice versa.
+export default {
+  app: {
+    diffToggle: 'Rozdíly',
+    diffToggleTitle: 'Přepnout zobrazení rozdílů',
+    settingsBtn: 'Nastavení',
+    settingsBtnTitle: 'Otevřít nastavení',
+    openFile: 'Otevřít soubor…',
+    openFileTitle: 'Přepsat zvukový soubor z disku',
+    dropHint: 'nebo sem přetáhněte zvukový soubor',
+    dropOverlay: 'Přetažením zvukového souboru spustíte přepis',
+    errorSourceWhisper: 'Whisper',
+    errorSourceRefinement: 'Vylepšení',
+  },
+
+  common: {
+    copy: 'Kopírovat',
+    copied: '✓ Zkopírováno',
+  },
+
+  settings: {
+    title: 'Nastavení',
+    dialogLabel: 'Nastavení',
+    modeFrameTitle: 'Režim přepisu',
+    modeIntegrated: 'Integrovaný',
+    modeHttp: 'HTTP koncový bod',
+    modelPrefix: 'Model:',
+    noModel: 'Žádný model není stažen',
+    changeModel: 'Změnit model',
+    downloadModel: 'Stáhnout model',
+    presetCurrent: 'Aktuální',
+    presetLocal: 'Místní',
+    presetExternal: 'Externí',
+    apply: 'Použít',
+    whisperUrlLabel: 'Whisper URL',
+    refinementFrameTitle: 'Vylepšení textu',
+    refinementToggleLabel: 'Automaticky vylepšit přepis pomocí LLM',
+    refinementUrlLabel: 'URL modelu',
+    refinementUrlHint: '(báze kompatibilní s OpenAI, např. Ollama)',
+    refinementModelLabel: 'Název modelu',
+    whisperLanguageLabel: 'Jazyk pro Whisper',
+    whisperLanguageHint: '(ponechte prázdné pro automatické rozpoznání)',
+    whisperTaskLabel: 'Úkol Whisperu',
+    taskTranscribe: 'Přepsat (zachovat původní jazyk)',
+    taskTranslate: 'Přeložit do angličtiny',
+    languageFrameTitle: 'Jazyk aplikace',
+    languageAuto: 'Automaticky (dle systému)',
+    languageEnglish: 'English',
+    languageCzech: 'Čeština',
+    reset: 'Obnovit výchozí nastavení',
+    done: 'Hotovo',
+  },
+
+  wizard: {
+    welcomeTitle: 'Vítejte v aplikaci Dictate',
+    welcomeDesc: 'Dictate přepisuje vaši řeč lokálně — žádný cloud, žádná data neopouští ' +
+      'váš počítač. Při prvním spuštění je potřeba krátké nastavení: stáhne se přepisovací ' +
+      'engine a model (~800 MB pro doporučený model).',
+    getStarted: 'Začít',
+    skipSetup: 'Vím, co dělám — přeskočit nastavení',
+    chooseModel: 'Vyberte model',
+    gpuAppleSilicon: 'Apple Silicon',
+    gpuCuda: 'NVIDIA GPU (CUDA)',
+    gpuCpu: 'Pouze CPU',
+    ramChip: (ramGB) => `${ramGB} GB RAM`,
+    languageChip: (locale) => `Jazyk: ${locale}`,
+    models: {
+      small:              { label: 'Malý',       desc: 'Rychlý; optimalizovaný pro angličtinu' },
+      medium:             { label: 'Střední',    desc: 'Dobrá přesnost pro více jazyků' },
+      'large-v3-turbo':   { label: 'Velký Turbo', desc: 'Téměř stejná přesnost jako Large v3, mnohem rychlejší na Apple Silicon' },
+      'large-v3':         { label: 'Velký v3',    desc: 'Nejvyšší přesnost; větší stažení s malým přínosem oproti Turbo' },
+    },
+    recommended: 'Doporučeno',
+    downloadNote: 'Stažení zahrnuje engine whisper-cli a vybraný model.',
+    back: 'Zpět',
+    downloadInstall: 'Stáhnout a nainstalovat',
+    starting: 'Zahajuji…',
+    downloading: 'Stahování…',
+    tryAgain: 'Zkusit znovu',
+    pleaseKeepOpen: 'Nechte aplikaci během stahování otevřenou.',
+    cancel: 'Zrušit',
+    allSet: 'Vše připraveno!',
+    // Split around the model name so the template can keep it <strong>.
+    readyDescBefore: 'Dictate je připraven přepisovat lokálně pomocí modelu',
+    readyDescAfter: '. Přepis nevyžaduje připojení k internetu. Model můžete kdykoli změnit ' +
+      'nebo přepnout do režimu HTTP v Nastavení.',
+    startUsing: 'Začít používat Dictate',
+  },
+
+  recorder: {
+    micDenied: (message) => `Přístup k mikrofonu odepřen: ${message}`,
+    stopTitle: 'Zastavit nahrávání (mezerník)',
+    startTitle: 'Spustit nahrávání (mezerník)',
+    stop: 'Stop',
+    record: 'Nahrát',
+  },
+
+  transcript: {
+    title: 'Přepis',
+    transcribing: 'Přepisuji…',
+    placeholder: 'Po nahrání se zde zobrazí surový přepis…',
+    ariaLabel: 'Surový přepis',
+  },
+
+  refine: {
+    title: 'Vylepšeno',
+    refining: 'Vylepšuji…',
+    refiningProgress: (current, total) => `Vylepšuji ${current}/${total}…`,
+    promptPlaceholder: 'Instrukce pro vylepšení…',
+    promptAriaLabel: 'Instrukce pro vylepšení',
+    refineBtn: 'Vylepšit',
+    placeholder: 'Zde se zobrazí vylepšený text…',
+    ariaLabel: 'Vylepšený text',
+  },
+
+  diff: {
+    transcriptionSide: 'Přepis',
+    refinedSide: 'Vylepšeno',
+    removedWords: (n) => `−${n} slov`,
+    addedWords: (n) => `+${n} slov`,
+    emptyTitle: 'Zatím není co porovnávat.',
+    emptyHint: 'Nahrajte → přepište → vylepšete, pak se sem vraťte.',
+  },
+};

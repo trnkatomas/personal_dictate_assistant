@@ -1,5 +1,6 @@
 <script>
   import { settings, showSettings, showWizard } from '$lib/stores.js';
+  import { t } from '$lib/i18n';
 
   const DEFAULTS = {
     mode:              'integrated',
@@ -16,11 +17,14 @@
                         "else untouched, and make sure corrections fit naturally with the " +
                         "surrounding sentence. Return only the corrected text, with no " +
                         "explanations or preamble.",
+    uiLanguage:        'auto',
   };
 
-  const PRESETS = [
-    { id: 'local',    label: 'Local',    whisperUrl: 'http://localhost:9000' },
-    { id: 'external', label: 'External', whisperUrl: '' },
+  // Labels come from the active dictionary so switching uiLanguage updates
+  // them immediately, without touching the underlying preset values.
+  $: PRESETS = [
+    { id: 'local',    label: $t.settings.presetLocal,    whisperUrl: 'http://localhost:9000' },
+    { id: 'external', label: $t.settings.presetExternal, whisperUrl: '' },
   ];
 
   // Preview state for the URL field — selecting a preset updates this
@@ -73,9 +77,9 @@
 {#if $showSettings}
   <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
   <div class="overlay" on:click={onOverlayClick}>
-    <div class="panel" role="dialog" aria-label="Settings">
+    <div class="panel" role="dialog" aria-label={$t.settings.dialogLabel}>
       <div class="panel-header">
-        <h3>Settings</h3>
+        <h3>{$t.settings.title}</h3>
         <button class="close-btn" on:click={close}>✕</button>
       </div>
 
@@ -83,7 +87,7 @@
 
         <!-- ── Transcription mode frame ── -->
         <div class="endpoint-frame">
-          <span class="frame-title">Transcription mode</span>
+          <span class="frame-title">{$t.settings.modeFrameTitle}</span>
 
           <!-- Mode toggle -->
           <div class="mode-toggle">
@@ -91,12 +95,12 @@
               class="mode-btn"
               class:active={$settings.mode === 'integrated'}
               on:click={() => setMode('integrated')}
-            >Integrated</button>
+            >{$t.settings.modeIntegrated}</button>
             <button
               class="mode-btn"
               class:active={$settings.mode === 'http'}
               on:click={() => setMode('http')}
-            >HTTP endpoint</button>
+            >{$t.settings.modeHttp}</button>
           </div>
 
           {#if $settings.mode === 'integrated'}
@@ -104,31 +108,31 @@
             <div class="model-row">
               {#if $settings.modelName}
                 <span class="model-status">
-                  Model: <strong>{$settings.modelName}</strong>
+                  {$t.settings.modelPrefix} <strong>{$settings.modelName}</strong>
                 </span>
               {:else}
-                <span class="model-status missing">No model downloaded</span>
+                <span class="model-status missing">{$t.settings.noModel}</span>
               {/if}
               <button class="change-model-btn" on:click={changeModel}>
-                {$settings.modelName ? 'Change model' : 'Download model'}
+                {$settings.modelName ? $t.settings.changeModel : $t.settings.downloadModel}
               </button>
             </div>
           {:else}
             <!-- HTTP mode: preset dropdown + URL field -->
             <div class="preset-row">
               <select bind:value={selectedPresetId} on:change={onPresetChange}>
-                <option value="current">Current</option>
+                <option value="current">{$t.settings.presetCurrent}</option>
                 {#each PRESETS as p}
                   <option value={p.id}>{p.label}</option>
                 {/each}
               </select>
               <button class="apply-btn" on:click={applyPreset} disabled={!isPreviewing}>
-                Apply
+                {$t.settings.apply}
               </button>
             </div>
 
             <label>
-              <span>Whisper URL</span>
+              <span>{$t.settings.whisperUrlLabel}</span>
               <input
                 type="url"
                 bind:value={previewWhisperUrl}
@@ -141,20 +145,20 @@
 
         <!-- ── Text refinement frame ── -->
         <div class="endpoint-frame">
-          <span class="frame-title">Text refinement</span>
+          <span class="frame-title">{$t.settings.refinementFrameTitle}</span>
 
           <label class="toggle-label">
             <input type="checkbox" bind:checked={$settings.refinementEnabled} />
-            <span>Automatically polish transcription with an LLM</span>
+            <span>{$t.settings.refinementToggleLabel}</span>
           </label>
 
           {#if $settings.refinementEnabled}
             <label>
-              <span>Model URL <em>(OpenAI-compatible base, e.g. Ollama)</em></span>
+              <span>{$t.settings.refinementUrlLabel} <em>{$t.settings.refinementUrlHint}</em></span>
               <input type="url" bind:value={$settings.refinementUrl} placeholder="http://localhost:11434/v1" />
             </label>
             <label>
-              <span>Model name</span>
+              <span>{$t.settings.refinementModelLabel}</span>
               <input type="text" bind:value={$settings.refinementModel} placeholder="qwen3:1.7b" />
             </label>
           {/if}
@@ -162,23 +166,33 @@
 
         <!-- ── Language & task (always visible) ── -->
         <label>
-          <span>Whisper language <em>(leave blank to auto-detect)</em></span>
+          <span>{$t.settings.whisperLanguageLabel} <em>{$t.settings.whisperLanguageHint}</em></span>
           <input type="text" bind:value={$settings.whisperLanguage} placeholder="e.g. en, de, cs" />
         </label>
 
         <label>
-          <span>Whisper task</span>
+          <span>{$t.settings.whisperTaskLabel}</span>
           <select bind:value={$settings.whisperTask}>
-            <option value="transcribe">Transcribe (keep original language)</option>
-            <option value="translate">Translate to English</option>
+            <option value="transcribe">{$t.settings.taskTranscribe}</option>
+            <option value="translate">{$t.settings.taskTranslate}</option>
+          </select>
+        </label>
+
+        <!-- ── App language ── -->
+        <label>
+          <span>{$t.settings.languageFrameTitle}</span>
+          <select bind:value={$settings.uiLanguage}>
+            <option value="auto">{$t.settings.languageAuto}</option>
+            <option value="en">{$t.settings.languageEnglish}</option>
+            <option value="cs">{$t.settings.languageCzech}</option>
           </select>
         </label>
 
       </div>
 
       <div class="panel-footer">
-        <button class="reset-btn" on:click={reset}>Reset to defaults</button>
-        <button class="save-btn"  on:click={close}>Done</button>
+        <button class="reset-btn" on:click={reset}>{$t.settings.reset}</button>
+        <button class="save-btn"  on:click={close}>{$t.settings.done}</button>
       </div>
     </div>
   </div>

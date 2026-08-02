@@ -3,6 +3,7 @@
   import { EventsOn, EventsOff } from '../../../wailsjs/runtime/runtime';
   import { GetSystemInfo, StartDownload, CancelDownload } from '../../../wailsjs/go/main/App';
   import { settings, initSettings } from '$lib/stores.js';
+  import { t } from '$lib/i18n';
 
   const dispatch = createEventDispatcher();
 
@@ -15,16 +16,24 @@
   let selectedModel = 'large-v3-turbo';
 
   // Step 3 — download progress
-  let downloadLabel = 'Starting…';
+  let downloadLabel = $t.wizard.starting;
   let downloadPercent = 0;
   let downloadError = '';
 
-  const MODELS = [
-    { id: 'small',          label: 'Small',       size: '244 MB',  desc: 'Fast; English-optimized' },
-    { id: 'medium',         label: 'Medium',      size: '769 MB',  desc: 'Good multilingual accuracy' },
-    { id: 'large-v3-turbo', label: 'Large Turbo', size: '809 MB',  desc: 'Near-identical accuracy to Large v3, much faster on Apple Silicon' },
-    { id: 'large-v3',       label: 'Large v3',    size: '1.5 GB',  desc: 'Maximum accuracy; larger download with marginal gain over Turbo' },
-  ];
+  // Sizes stay literal (not translated); labels/descriptions come from the
+  // active dictionary so switching uiLanguage updates them immediately.
+  const MODEL_SIZES = {
+    small:            '244 MB',
+    medium:           '769 MB',
+    'large-v3-turbo': '809 MB',
+    'large-v3':       '1.5 GB',
+  };
+  $: MODELS = Object.keys(MODEL_SIZES).map((id) => ({
+    id,
+    size:  MODEL_SIZES[id],
+    label: $t.wizard.models[id].label,
+    desc:  $t.wizard.models[id].desc,
+  }));
 
   // Large Turbo is the recommended default across the board — near-identical
   // accuracy to Large v3 at roughly half the size and noticeably faster.
@@ -35,9 +44,9 @@
   }
 
   function gpuLabel(gpu) {
-    if (gpu === 'apple_silicon') return 'Apple Silicon';
-    if (gpu === 'cuda')          return 'NVIDIA GPU (CUDA)';
-    return 'CPU only';
+    if (gpu === 'apple_silicon') return $t.wizard.gpuAppleSilicon;
+    if (gpu === 'cuda')          return $t.wizard.gpuCuda;
+    return $t.wizard.gpuCpu;
   }
 
   // Pre-fetch system info while the user reads the welcome screen
@@ -61,7 +70,7 @@
   }
 
   async function startDownload() {
-    downloadLabel = 'Starting…';
+    downloadLabel = $t.wizard.starting;
     downloadPercent = 0;
     downloadError = '';
     step = 'downloading';
@@ -113,33 +122,31 @@
     {#if step === 'welcome'}
       <div class="step">
         <div class="step-icon">🎙</div>
-        <h2>Welcome to Dictate</h2>
+        <h2>{$t.wizard.welcomeTitle}</h2>
         <p class="step-desc">
-          Dictate transcribes your speech locally — no cloud, no data leaving your machine.
-          The first time you run it, a small setup is needed: the transcription engine and model
-          will be downloaded (~800 MB for the recommended model).
+          {$t.wizard.welcomeDesc}
         </p>
         <div class="step-actions">
-          <button class="primary-btn" on:click={goToRecommendation}>Get started</button>
+          <button class="primary-btn" on:click={goToRecommendation}>{$t.wizard.getStarted}</button>
         </div>
         <button class="skip-link" on:click={skip}>
-          I know what I'm doing — skip setup
+          {$t.wizard.skipSetup}
         </button>
       </div>
 
     <!-- ── Step 2: Recommendation ───────────────────────────── -->
     {:else if step === 'recommendation'}
       <div class="step">
-        <h2>Choose a model</h2>
+        <h2>{$t.wizard.chooseModel}</h2>
 
         {#if systemInfo}
           <div class="hw-summary">
             <span class="hw-chip">{gpuLabel(systemInfo.gpu)}</span>
             {#if systemInfo.ramGB > 0}
-              <span class="hw-chip">{systemInfo.ramGB} GB RAM</span>
+              <span class="hw-chip">{$t.wizard.ramChip(systemInfo.ramGB)}</span>
             {/if}
             {#if systemInfo.locale && systemInfo.locale !== 'en'}
-              <span class="hw-chip">Language: {systemInfo.locale}</span>
+              <span class="hw-chip">{$t.wizard.languageChip(systemInfo.locale)}</span>
             {/if}
           </div>
         {/if}
@@ -151,7 +158,7 @@
               <div class="model-info">
                 <span class="model-label">{m.label}</span>
                 {#if m.id === recommendedModel}
-                  <span class="rec-badge">Recommended</span>
+                  <span class="rec-badge">{$t.wizard.recommended}</span>
                 {/if}
                 <span class="model-size">{m.size}</span>
               </div>
@@ -161,19 +168,19 @@
         </div>
 
         <p class="download-note">
-          Download includes the whisper-cli engine and the selected model.
+          {$t.wizard.downloadNote}
         </p>
 
         <div class="step-actions">
-          <button class="secondary-btn" on:click={() => step = 'welcome'}>Back</button>
-          <button class="primary-btn" on:click={startDownload}>Download &amp; install</button>
+          <button class="secondary-btn" on:click={() => step = 'welcome'}>{$t.wizard.back}</button>
+          <button class="primary-btn" on:click={startDownload}>{$t.wizard.downloadInstall}</button>
         </div>
       </div>
 
     <!-- ── Step 3: Downloading ──────────────────────────────── -->
     {:else if step === 'downloading'}
       <div class="step">
-        <h2>Downloading…</h2>
+        <h2>{$t.wizard.downloading}</h2>
 
         {#if downloadError}
           <div class="error-box">{downloadError}</div>
@@ -182,7 +189,7 @@
               await CancelDownload();
               downloadError = '';
               step = 'recommendation';
-            }}>Try again</button>
+            }}>{$t.wizard.tryAgain}</button>
           </div>
         {:else}
           <p class="dl-label">{downloadLabel}</p>
@@ -190,12 +197,12 @@
             <div class="progress-bar" style="width: {Math.round(downloadPercent)}%"></div>
           </div>
           <p class="dl-pct">{Math.round(downloadPercent)}%</p>
-          <p class="dl-note">Please keep the app open during download.</p>
+          <p class="dl-note">{$t.wizard.pleaseKeepOpen}</p>
           <div class="step-actions">
             <button class="secondary-btn danger" on:click={async () => {
               await CancelDownload();
               step = 'recommendation';
-            }}>Cancel</button>
+            }}>{$t.wizard.cancel}</button>
           </div>
         {/if}
       </div>
@@ -204,14 +211,12 @@
     {:else if step === 'ready'}
       <div class="step">
         <div class="step-icon">✅</div>
-        <h2>All set!</h2>
+        <h2>{$t.wizard.allSet}</h2>
         <p class="step-desc">
-          Dictate is ready to transcribe locally using the <strong>{selectedModel}</strong> model.
-          No internet connection is required for transcription.
-          You can change the model or switch to HTTP mode at any time in Settings.
+          {$t.wizard.readyDescBefore} <strong>{selectedModel}</strong>{$t.wizard.readyDescAfter}
         </p>
         <div class="step-actions">
-          <button class="primary-btn" on:click={finish}>Start using Dictate</button>
+          <button class="primary-btn" on:click={finish}>{$t.wizard.startUsing}</button>
         </div>
       </div>
     {/if}

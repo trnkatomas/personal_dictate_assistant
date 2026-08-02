@@ -26,6 +26,7 @@ func defaultSettings() Settings {
 		RefinementURL:     "http://localhost:11434/v1",
 		RefinementModel:   "qwen3:1.7b",
 		RefinementPrompt:  defaultRefinementPrompt,
+		UILanguage:        "auto",
 	}
 }
 
@@ -71,6 +72,10 @@ func loadSettings() (Settings, error) {
 	// Migrate settings written before refinementPrompt existed.
 	if s.RefinementPrompt == "" {
 		s.RefinementPrompt = defaultRefinementPrompt
+	}
+	// Migrate settings written before uiLanguage existed.
+	if s.UILanguage == "" {
+		s.UILanguage = "auto"
 	}
 	return s, nil
 }
