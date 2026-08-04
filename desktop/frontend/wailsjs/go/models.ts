@@ -11,6 +11,7 @@ export namespace main {
 	    refinementModel: string;
 	    refinementPrompt: string;
 	    uiLanguage: string;
+	    appendTranscripts: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -28,6 +29,7 @@ export namespace main {
 	        this.refinementModel = source["refinementModel"];
 	        this.refinementPrompt = source["refinementPrompt"];
 	        this.uiLanguage = source["uiLanguage"];
+	        this.appendTranscripts = source["appendTranscripts"];
 	    }
 	}
 	export class SetupState {

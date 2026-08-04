@@ -27,6 +27,7 @@ func defaultSettings() Settings {
 		RefinementModel:   "qwen3:1.7b",
 		RefinementPrompt:  defaultRefinementPrompt,
 		UILanguage:        "auto",
+		AppendTranscripts: false,
 	}
 }
 

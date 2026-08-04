@@ -18,6 +18,10 @@ export function LoadSettings() {
   return window['go']['main']['App']['LoadSettings']();
 }
 
+export function LogFilePath() {
+  return window['go']['main']['App']['LogFilePath']();
+}
+
 export function OpenAndTranscribeFile(arg1) {
   return window['go']['main']['App']['OpenAndTranscribeFile'](arg1);
 }

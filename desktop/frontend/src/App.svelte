@@ -7,27 +7,33 @@
   import RefinementPane from '$lib/components/RefinementPane.svelte';
   import DiffView       from '$lib/components/DiffView.svelte';
   import Settings       from '$lib/components/Settings.svelte';
+  import History        from '$lib/components/History.svelte';
   import Wizard         from '$lib/components/Wizard.svelte';
 
   import {
     settings, rawText, refinedText, isTranscribing, isRecording,
-    showSettings, showWizard, showDiff, audioBlob, endpointError,
-    initSettings
+    showSettings, showWizard, showHistory, showDiff, audioBlob, endpointError,
+    initSettings, recordTranscript,
+    startTranscribeEstimate, clearTranscribeEstimate, finishTranscribeEstimate,
   } from '$lib/stores.js';
   import { transcribe, openAndTranscribeFile, transcribeFilePath, checkSetupState } from '$lib/api.js';
   import { t, initLocale } from '$lib/i18n';
 
   // Called when the Recorder component finishes a mic recording.
   async function handleRecorded(e) {
-    const { blob, mimeType } = e.detail;
+    const { blob, mimeType, durationSeconds } = e.detail;
     audioBlob.set(blob);
     endpointError.set(null);
     refinedText.set('');
     isTranscribing.set(true);
+    startTranscribeEstimate(durationSeconds);
+    const startedAt = performance.now();
     try {
-      rawText.set(await transcribe(blob, mimeType));
+      recordTranscript(await transcribe(blob, mimeType));
+      finishTranscribeEstimate(durationSeconds, (performance.now() - startedAt) / 1000);
     } catch (err) {
       endpointError.set({ source: $t.app.errorSourceWhisper, message: err?.message ?? String(err) });
+      clearTranscribeEstimate();
     } finally {
       isTranscribing.set(false);
     }
@@ -37,10 +43,13 @@
   async function handleOpenFile() {
     endpointError.set(null);
     refinedText.set('');
+    // No cheaply-known audio duration for a picked file, so no time estimate —
+    // just the plain "Transcribing…" indicator (see stores.js).
+    clearTranscribeEstimate();
     isTranscribing.set(true);
     try {
       const text = await openAndTranscribeFile();
-      if (text) rawText.set(text);
+      if (text) recordTranscript(text);
     } catch (err) {
       endpointError.set({ source: $t.app.errorSourceWhisper, message: err?.message ?? String(err) });
     } finally {
@@ -66,9 +75,10 @@
     if (!path) return;
     endpointError.set(null);
     refinedText.set('');
+    clearTranscribeEstimate(); // see handleOpenFile — no known duration to estimate from
     isTranscribing.set(true);
     try {
-      rawText.set(await transcribeFilePath(path));
+      recordTranscript(await transcribeFilePath(path));
     } catch (err) {
       endpointError.set({ source: $t.app.errorSourceWhisper, message: err?.message ?? String(err) });
     } finally {
@@ -105,8 +115,9 @@
   });
 </script>
 
-<!-- Settings panel (renders its own overlay internally) -->
+<!-- Settings and History panels render their own overlays internally -->
 <Settings />
+<History />
 
 {#if $showWizard}
   <!-- Full-screen setup wizard — replaces main UI during first-run -->
@@ -124,6 +135,13 @@
     <header class="topbar">
       <span class="app-name">🎙 Dictate</span>
       <div class="topbar-actions">
+        <button
+          class="tool-btn"
+          on:click={() => showHistory.set(true)}
+          title={$t.app.historyBtnTitle}
+        >
+          🕘 {$t.app.historyBtn}
+        </button>
         {#if $settings.refinementEnabled}
           <button
             class="tool-btn"

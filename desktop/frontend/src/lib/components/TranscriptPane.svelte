@@ -1,5 +1,5 @@
 <script>
-  import { rawText, isTranscribing } from '$lib/stores.js';
+  import { rawText, isTranscribing, transcribeEstimateSeconds } from '$lib/stores.js';
   import { t } from '$lib/i18n';
 
   let copied = false;
@@ -16,7 +16,11 @@
     <h2>{$t.transcript.title}</h2>
     <div class="pane-actions">
       {#if $isTranscribing}
-        <span class="badge loading">{$t.transcript.transcribing}</span>
+        <span class="badge loading">
+          {$transcribeEstimateSeconds != null
+            ? $t.transcript.transcribingEstimate(Math.ceil($transcribeEstimateSeconds))
+            : $t.transcript.transcribing}
+        </span>
       {:else if $rawText}
         <button class="action-btn" on:click={copy}>{copied ? $t.common.copied : $t.common.copy}</button>
       {/if}
