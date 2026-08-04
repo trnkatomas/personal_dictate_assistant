@@ -22,6 +22,11 @@ type Settings struct {
 	RefinementPrompt  string `json:"refinementPrompt"` // editable system prompt sent to the refinement model
 
 	UILanguage string `json:"uiLanguage"` // "auto" | "en" | "cs" — UI display language, not WhisperLanguage
+
+	// AppendTranscripts: false (default) replaces the transcript pane's
+	// contents on every new recording/file, as before. true appends after a
+	// blank line instead, for users dictating in multiple passes.
+	AppendTranscripts bool `json:"appendTranscripts"`
 }
 
 // App is the Wails application struct. All exported methods are bound to the JS frontend.

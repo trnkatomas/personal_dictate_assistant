@@ -18,6 +18,7 @@
                         "surrounding sentence. Return only the corrected text, with no " +
                         "explanations or preamble.",
     uiLanguage:        'auto',
+    appendTranscripts: false,
   };
 
   // Labels come from the active dictionary so switching uiLanguage updates
@@ -176,6 +177,11 @@
             <option value="transcribe">{$t.settings.taskTranscribe}</option>
             <option value="translate">{$t.settings.taskTranslate}</option>
           </select>
+        </label>
+
+        <label class="toggle-label">
+          <input type="checkbox" bind:checked={$settings.appendTranscripts} />
+          <span>{$t.settings.appendToggleLabel}</span>
         </label>
 
         <!-- ── App language ── -->

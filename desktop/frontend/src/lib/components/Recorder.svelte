@@ -12,6 +12,7 @@
   let analyser    = null;
   let animFrame   = null;
   let chunks      = [];
+  let startedAt   = 0;
 
   // ── Canvas sizing ──────────────────────────────────────────────
   // ResizeObserver fires once the element actually has non-zero dimensions,
@@ -60,11 +61,13 @@
     recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
     recorder.onstop = () => {
       const blob = new Blob(chunks, { type: recorder.mimeType });
-      dispatch('recorded', { blob, mimeType: recorder.mimeType });
+      const durationSeconds = (Date.now() - startedAt) / 1000;
+      dispatch('recorded', { blob, mimeType: recorder.mimeType, durationSeconds });
       cleanup();
     };
 
     recorder.start(100);          // chunk every 100 ms
+    startedAt = Date.now();
     isRecording.set(true);
     drawLive();
   }

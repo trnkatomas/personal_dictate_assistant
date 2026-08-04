@@ -5,6 +5,8 @@ export default {
   app: {
     diffToggle: 'Diff',
     diffToggleTitle: 'Toggle diff view',
+    historyBtn: 'History',
+    historyBtnTitle: 'View past transcripts from this session',
     settingsBtn: 'Settings',
     settingsBtnTitle: 'Open settings',
     openFile: 'Open file…',
@@ -45,6 +47,7 @@ export default {
     whisperTaskLabel: 'Whisper task',
     taskTranscribe: 'Transcribe (keep original language)',
     taskTranslate: 'Translate to English',
+    appendToggleLabel: 'Append new transcriptions instead of replacing',
     languageFrameTitle: 'App language',
     languageAuto: 'Auto (system)',
     languageEnglish: 'English',
@@ -100,6 +103,7 @@ export default {
   transcript: {
     title: 'Transcription',
     transcribing: 'Transcribing…',
+    transcribingEstimate: (seconds) => seconds > 0 ? `Transcribing… ~${seconds}s left` : 'Transcribing… almost done',
     placeholder: 'Raw transcription will appear here after recording…',
     ariaLabel: 'Raw transcription',
   },
@@ -122,5 +126,14 @@ export default {
     addedWords: (n) => `+${n} words`,
     emptyTitle: 'Nothing to diff yet.',
     emptyHint: 'Record → transcribe → refine, then come back here.',
+  },
+
+  history: {
+    title: 'History',
+    dialogLabel: 'Transcript history',
+    restoreHint: 'Click an entry to load it back into the transcript.',
+    clear: 'Clear history',
+    emptyTitle: 'No transcripts yet this session.',
+    emptyHint: 'Recordings and files you transcribe will show up here.',
   },
 };

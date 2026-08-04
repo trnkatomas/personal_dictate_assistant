@@ -4,6 +4,8 @@ export default {
   app: {
     diffToggle: 'Rozdíly',
     diffToggleTitle: 'Přepnout zobrazení rozdílů',
+    historyBtn: 'Historie',
+    historyBtnTitle: 'Zobrazit předchozí přepisy z této relace',
     settingsBtn: 'Nastavení',
     settingsBtnTitle: 'Otevřít nastavení',
     openFile: 'Otevřít soubor…',
@@ -44,6 +46,7 @@ export default {
     whisperTaskLabel: 'Úkol Whisperu',
     taskTranscribe: 'Přepsat (zachovat původní jazyk)',
     taskTranslate: 'Přeložit do angličtiny',
+    appendToggleLabel: 'Přidávat nové přepisy místo nahrazení',
     languageFrameTitle: 'Jazyk aplikace',
     languageAuto: 'Automaticky (dle systému)',
     languageEnglish: 'English',
@@ -99,6 +102,7 @@ export default {
   transcript: {
     title: 'Přepis',
     transcribing: 'Přepisuji…',
+    transcribingEstimate: (seconds) => seconds > 0 ? `Přepisuji… zbývá ~${seconds}s` : 'Přepisuji… už to bude',
     placeholder: 'Po nahrání se zde zobrazí surový přepis…',
     ariaLabel: 'Surový přepis',
   },
@@ -121,5 +125,14 @@ export default {
     addedWords: (n) => `+${n} slov`,
     emptyTitle: 'Zatím není co porovnávat.',
     emptyHint: 'Nahrajte → přepište → vylepšete, pak se sem vraťte.',
+  },
+
+  history: {
+    title: 'Historie',
+    dialogLabel: 'Historie přepisů',
+    restoreHint: 'Kliknutím na položku ji načtete zpět do přepisu.',
+    clear: 'Vymazat historii',
+    emptyTitle: 'V této relaci zatím nejsou žádné přepisy.',
+    emptyHint: 'Nahrávky a soubory, které přepíšete, se zobrazí zde.',
   },
 };
