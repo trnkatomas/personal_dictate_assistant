@@ -16,7 +16,7 @@
     initSettings, recordTranscript,
     startTranscribeEstimate, clearTranscribeEstimate, finishTranscribeEstimate,
   } from '$lib/stores.js';
-  import { transcribe, openAndTranscribeFile, transcribeFilePath, checkSetupState } from '$lib/api.js';
+  import { transcribe, openAndTranscribeFile, transcribeFilePath, checkSetupState, stopNativeRecording } from '$lib/api.js';
   import { t, initLocale } from '$lib/i18n';
 
   // Called when the Recorder component finishes a mic recording.
@@ -30,6 +30,27 @@
     const startedAt = performance.now();
     try {
       recordTranscript(await transcribe(blob, mimeType));
+      finishTranscribeEstimate(durationSeconds, (performance.now() - startedAt) / 1000);
+    } catch (err) {
+      endpointError.set({ source: $t.app.errorSourceWhisper, message: err?.message ?? String(err) });
+      clearTranscribeEstimate();
+    } finally {
+      isTranscribing.set(false);
+    }
+  }
+
+  // Linux: the Go side recorded with ffmpeg (desktop/recorder.go); stopping it
+  // also transcribes, with no audio crossing the JS↔Go bridge.
+  async function handleNativeStopped(e) {
+    const { durationSeconds } = e.detail;
+    audioBlob.set(null);
+    endpointError.set(null);
+    refinedText.set('');
+    isTranscribing.set(true);
+    startTranscribeEstimate(durationSeconds);
+    const startedAt = performance.now();
+    try {
+      recordTranscript(await stopNativeRecording());
       finishTranscribeEstimate(durationSeconds, (performance.now() - startedAt) / 1000);
     } catch (err) {
       endpointError.set({ source: $t.app.errorSourceWhisper, message: err?.message ?? String(err) });
@@ -164,7 +185,7 @@
 
     <!-- ── Recording section ───────────────────────────────── -->
     <section class="record-section">
-      <Recorder on:recorded={handleRecorded} />
+      <Recorder on:recorded={handleRecorded} on:nativeStopped={handleNativeStopped} />
       <div class="file-row">
         <button
           class="file-btn"

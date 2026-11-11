@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -190,7 +191,34 @@ func plainFailureMessage(code int, stderr string) string {
 	if stderr == "" {
 		return fmt.Sprintf("(no output — process exit code %d)", code)
 	}
+	if hint := missingLibraryHint(stderr); hint != "" {
+		return stderr + "\n\n" + hint
+	}
 	return stderr
+}
+
+// missingSharedLibRe matches the Linux dynamic loader's complaint when
+// whisper-cli can't start because a system library isn't installed.
+var missingSharedLibRe = regexp.MustCompile(`error while loading shared libraries: (\S+): cannot open shared object file`)
+
+// missingLibraryHint turns that loader error into something actionable. The
+// prebuilt Linux engine bundles its own ggml/whisper libraries but relies on
+// the system for the GNU OpenMP runtime, which a minimal install may lack
+// (observed on a stock Ubuntu 22.04 image) — the one case worth naming the
+// exact package for. Returns "" for any other failure.
+func missingLibraryHint(stderr string) string {
+	m := missingSharedLibRe.FindStringSubmatch(stderr)
+	if m == nil {
+		return ""
+	}
+	if strings.HasPrefix(m[1], "libgomp.so") {
+		return "The transcription engine needs the GNU OpenMP runtime, which isn't installed. " +
+			"Install it with your package manager, e.g.:\n" +
+			"  sudo apt install libgomp1   (Debian/Ubuntu)\n" +
+			"  sudo dnf install libgomp    (Fedora)"
+	}
+	return "The transcription engine can't start because the system library " + m[1] +
+		" is missing. Install the package that provides it with your distribution's package manager."
 }
 
 // exitCode extracts the process exit code from cmd.Output()'s error, or -1
@@ -363,6 +391,8 @@ func ffmpegInstallHint() string {
 
 func audioExt(mimeType string) string {
 	switch {
+	case strings.Contains(mimeType, "wav"): // native (ffmpeg) recordings on Linux
+		return ".wav"
 	case strings.Contains(mimeType, "mp4"):
 		return ".mp4"
 	case strings.Contains(mimeType, "ogg"):
@@ -430,6 +460,8 @@ func transcribeHTTP(audio []byte, mimeType string, s Settings) (string, error) {
 // an accurate hint.
 func recordingFilename(mimeType string) string {
 	switch {
+	case strings.Contains(mimeType, "wav"):
+		return "recording.wav"
 	case strings.Contains(mimeType, "mp4"):
 		return "recording.mp4"
 	case strings.Contains(mimeType, "ogg"):

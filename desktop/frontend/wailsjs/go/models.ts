@@ -70,6 +70,28 @@ export namespace main {
 	        this.platform = source["platform"];
 	    }
 	}
+	export class VulkanBuildInfo {
+	    supported: boolean;
+	    ready: boolean;
+	    missing: string[];
+	    installHint: string;
+	    device: string;
+	    softwareOnly: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new VulkanBuildInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.supported = source["supported"];
+	        this.ready = source["ready"];
+	        this.missing = source["missing"];
+	        this.installHint = source["installHint"];
+	        this.device = source["device"];
+	        this.softwareOnly = source["softwareOnly"];
+	    }
+	}
 
 }
 

@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -188,13 +189,16 @@ func (a *App) GetSetupState() (SetupState, error) {
 	return state, nil
 }
 
-// StartDownload starts downloading the binary (if missing) and the given model.
+// StartDownload starts installing the engine (if missing) and the given model.
+// engine is "" for the default (the prebuilt download, or Homebrew on macOS)
+// or "vulkan" to build whisper-cli from source with Vulkan GPU support
+// instead — Linux only, see vulkan_build.go.
 // Progress is reported via "download:progress" Wails events.
-func (a *App) StartDownload(model string) error {
+func (a *App) StartDownload(model string, engine string) error {
 	var ctx context.Context
 	ctx, a.downloadCancel = context.WithCancel(context.Background())
 	go func() {
-		if err := a.doDownload(ctx, model); err != nil {
+		if err := a.doDownload(ctx, model, engine); err != nil {
 			if ctx.Err() == nil {
 				wailsRuntime.EventsEmit(a.ctx, "download:progress", DownloadProgress{
 					Label: "Error",
@@ -215,14 +219,29 @@ func (a *App) CancelDownload() {
 	}
 }
 
-func (a *App) doDownload(ctx context.Context, model string) error {
+func (a *App) doDownload(ctx context.Context, model string, engine string) error {
 	binPath, err := binaryPath()
 	if err != nil {
 		return err
 	}
 
-	// Install binary if not yet available (managed path or PATH).
-	if _, err := resolveWhisperBin(); err != nil {
+	if engine == engineVulkan {
+		// An explicit request: build unless a Vulkan build is already what's
+		// installed. Whatever engine is there now (a prebuilt CPU one, or one
+		// found on PATH) doesn't satisfy it.
+		_, statErr := os.Stat(binPath)
+		if statErr != nil || readEngineVariant(binPath) != engineVulkan {
+			if err := a.buildAndInstallVulkanEngine(ctx, binPath); err != nil {
+				return fmt.Errorf("build engine with Vulkan support: %w", err)
+			}
+		} else {
+			wailsRuntime.EventsEmit(a.ctx, "download:progress", DownloadProgress{
+				Label:   "Whisper binary",
+				Percent: 100,
+			})
+		}
+	} else if _, err := resolveWhisperBin(); err != nil {
+		// Install binary if not yet available (managed path or PATH).
 		if err := a.downloadBinary(ctx, binPath); err != nil {
 			return fmt.Errorf("download binary: %w", err)
 		}
@@ -257,13 +276,16 @@ func (a *App) doDownload(ctx context.Context, model string) error {
 	// whisper-cli run against the model we just confirmed is on disk. If it
 	// fails, fall back to the plain CPU build now rather than let the user
 	// discover it on their first real transcription.
-	if readEngineVariant(binPath) == "cuda" {
+	//
+	// The same goes for a Vulkan build made from source: it compiled, but
+	// only a real run shows whether it works with this machine's driver.
+	if variant := readEngineVariant(binPath); variant == "cuda" || variant == engineVulkan {
 		wailsRuntime.EventsEmit(a.ctx, "download:progress", DownloadProgress{
 			Label:   "Verifying GPU acceleration…",
 			Percent: 100,
 		})
 		if err := smokeTestWhisper(ctx, binPath, modPath); err != nil {
-			log.Printf("cublas build failed its startup check (%v) — falling back to the CPU build", err)
+			log.Printf("%s build failed its startup check (%v) — falling back to the CPU build", variant, err)
 			wailsRuntime.EventsEmit(a.ctx, "download:progress", DownloadProgress{
 				Label:   "GPU build didn't start correctly — falling back to CPU build…",
 				Percent: 0,
@@ -290,8 +312,11 @@ func (a *App) doDownload(ctx context.Context, model string) error {
 
 // ghRelease is the relevant subset of the GitHub releases API response.
 type ghRelease struct {
-	TagName string    `json:"tag_name"`
-	Assets  []ghAsset `json:"assets"`
+	TagName    string    `json:"tag_name"`
+	Draft      bool      `json:"draft"`
+	Prerelease bool      `json:"prerelease"`
+	Body       string    `json:"body"`
+	Assets     []ghAsset `json:"assets"`
 }
 
 type ghAsset struct {
@@ -299,30 +324,83 @@ type ghAsset struct {
 	BrowserDownloadURL string `json:"browser_download_url"`
 }
 
-// fetchLatestRelease queries the GitHub releases API for the latest whisper.cpp release.
-func fetchLatestRelease(ctx context.Context) (ghRelease, error) {
-	const apiURL = "https://api.github.com/repos/ggerganov/whisper.cpp/releases/latest"
+// fetchReleases queries the GitHub releases API for whisper.cpp's most recent
+// releases, newest first. It deliberately does not use /releases/latest: since
+// v1.9.3 the versioned releases carry no binaries at all — those are attached
+// to separate pre-release "build" tags (b5454, …) that /releases/latest never
+// returns. See selectEngineRelease for how the right one is picked.
+func fetchReleases(ctx context.Context) ([]ghRelease, error) {
+	const apiURL = "https://api.github.com/repos/ggml-org/whisper.cpp/releases?per_page=30"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
-		return ghRelease{}, err
+		return nil, err
 	}
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return ghRelease{}, err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return ghRelease{}, fmt.Errorf("GitHub API returned HTTP %d — are you online?", resp.StatusCode)
+		return nil, fmt.Errorf("GitHub API returned HTTP %d — are you online?", resp.StatusCode)
 	}
 
-	var rel ghRelease
-	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
-		return ghRelease{}, fmt.Errorf("parse GitHub API response: %w", err)
+	var rels []ghRelease
+	if err := json.NewDecoder(resp.Body).Decode(&rels); err != nil {
+		return nil, fmt.Errorf("parse GitHub API response: %w", err)
 	}
-	return rel, nil
+	return rels, nil
+}
+
+// buildTagLinkRe matches the "Nightly build: [b5454](…/releases/tag/b5454)"
+// link whisper.cpp's versioned release notes use to point at the build tag
+// holding that version's binaries.
+var buildTagLinkRe = regexp.MustCompile(`/whisper\.cpp/releases/tag/(b\d+)`)
+
+// selectEngineRelease picks which release to download the engine from, given
+// the release list newest-first. Returns the release, the chosen asset's URL
+// and its engine variant (see pickBestAsset); url is "" if nothing in the
+// list has a binary for this platform.
+//
+// Preference order:
+//  1. The newest versioned release, if it carries a usable binary itself
+//     (the layout up to v1.9.2).
+//  2. The build tag that release's notes link to — the binaries built from
+//     exactly that version (the layout since v1.9.3).
+//  3. The newest release of any kind with a usable binary, so a change in
+//     the release-notes format degrades to "a recent build" instead of
+//     breaking setup outright.
+func selectEngineRelease(rels []ghRelease, goos, goarch, gpu string) (rel ghRelease, url, variant string) {
+	for _, r := range rels {
+		if r.Draft || r.Prerelease {
+			continue
+		}
+		if u, v := pickBestAsset(r.Assets, goos, goarch, gpu); u != "" {
+			return r, u, v
+		}
+		if m := buildTagLinkRe.FindStringSubmatch(r.Body); m != nil {
+			for _, b := range rels {
+				if b.TagName != m[1] || b.Draft {
+					continue
+				}
+				if u, v := pickBestAsset(b.Assets, goos, goarch, gpu); u != "" {
+					return b, u, v
+				}
+			}
+		}
+		break // only the newest versioned release gets this treatment
+	}
+	for _, r := range rels {
+		if r.Draft {
+			continue
+		}
+		if u, v := pickBestAsset(r.Assets, goos, goarch, gpu); u != "" {
+			return r, u, v
+		}
+	}
+	return ghRelease{}, "", ""
 }
 
 // pickBestAsset finds the most suitable zip asset for the given platform and
@@ -381,7 +459,10 @@ func pickBestAsset(assets []ghAsset, goos, goarch, gpu string) (url, variant str
 				score = 1
 			}
 		case "linux/amd64":
-			if strings.Contains(name, "darwin") || strings.Contains(name, "windows") {
+			// Linux builds are the only .tar.gz assets; requiring that keeps
+			// the Windows x64 zips (which also say "x64" and nothing about
+			// Windows, e.g. whisper-bin-x64.zip) from ever matching here.
+			if !strings.HasSuffix(name, ".tar.gz") {
 				continue
 			}
 			if !strings.Contains(name, "x64") && !strings.Contains(name, "x86") {
@@ -392,10 +473,15 @@ func pickBestAsset(assets []ghAsset, goos, goarch, gpu string) (url, variant str
 			score = 1
 		case "windows/amd64":
 			if !strings.HasSuffix(name, ".zip") || !strings.Contains(name, "x64") {
-				continue // skip Win32 (32-bit) and non-zip assets
+				continue // skip Win32 (32-bit), arm64, and non-zip assets
 			}
 			switch {
-			case strings.Contains(name, "cublas"):
+			// CUDA builds: "whisper-cublas-11.8.0-bin-x64.zip" up to b5130,
+			// "whisper-bin-win-cuda-11.8.0-x64.zip" since. Matching both
+			// matters beyond finding the GPU build: an unrecognized CUDA zip
+			// would otherwise fall through to the plain-CPU default below and
+			// could be installed as a 270 MB "CPU" build.
+			case strings.Contains(name, "cublas"), strings.Contains(name, "cuda"):
 				if gpu != "cuda" {
 					// Multi-hundred-MB download only worth it when we've
 					// actually detected an NVIDIA GPU to use it.
@@ -480,22 +566,19 @@ func (a *App) downloadBinaryFromGitHub(ctx context.Context, binPath string, gpu 
 		Label:   "Checking latest release…",
 		Percent: 0,
 	})
-	rel, err := fetchLatestRelease(ctx)
+	rels, err := fetchReleases(ctx)
 	if err != nil {
 		return err
 	}
 
-	archiveURL, variant := pickBestAsset(rel.Assets, runtime.GOOS, runtime.GOARCH, gpu)
+	rel, archiveURL, variant := selectEngineRelease(rels, runtime.GOOS, runtime.GOARCH, gpu)
 	if archiveURL == "" {
-		var names []string
-		for _, a := range rel.Assets {
-			lower := strings.ToLower(a.Name)
-			if strings.HasSuffix(lower, ".zip") || strings.HasSuffix(lower, ".tar.gz") {
-				names = append(names, a.Name)
-			}
+		var tags []string
+		for _, r := range rels {
+			tags = append(tags, fmt.Sprintf("%s (%d assets)", r.TagName, len(r.Assets)))
 		}
-		return fmt.Errorf("no pre-built binary for %s/%s in whisper.cpp %s\navailable assets: %s",
-			runtime.GOOS, runtime.GOARCH, rel.TagName, strings.Join(names, ", "))
+		return fmt.Errorf("no pre-built whisper.cpp binary for %s/%s in any recent release\nreleases checked: %s",
+			runtime.GOOS, runtime.GOARCH, strings.Join(tags, ", "))
 	}
 
 	tmpArchive, err := downloadToTemp(ctx, archiveURL, func(pct float64) {
@@ -564,16 +647,16 @@ func writeEngineVariant(binPath, variant string) error {
 	return os.WriteFile(engineVariantMarkerPath(binPath), []byte(variant), 0o644)
 }
 
-// readEngineVariant returns "cuda" only if a marker file says so; any other
-// case (no marker — e.g. a Homebrew install, or one predating this feature —
-// read error, or an unrecognized value) defaults to "cpu", which is always
-// the safe assumption: it just means the smoke test below is skipped.
+// readEngineVariant returns "cuda" or "vulkan" only if a marker file says so;
+// any other case (no marker — e.g. a Homebrew install, or one predating this
+// feature — read error, or an unrecognized value) defaults to "cpu", which is
+// always the safe assumption: it just means the smoke test below is skipped.
 func readEngineVariant(binPath string) string {
 	data, err := os.ReadFile(engineVariantMarkerPath(binPath))
 	if err != nil {
 		return "cpu"
 	}
-	if v := strings.TrimSpace(string(data)); v == "cuda" {
+	if v := strings.TrimSpace(string(data)); v == "cuda" || v == engineVulkan {
 		return v
 	}
 	return "cpu"
@@ -776,6 +859,11 @@ func extractTarGzEngine(tarGzPath, destDir, binName string) error {
 	defer gz.Close()
 	tr := tar.NewReader(gz)
 
+	// The Linux archives ship each core library as a real file plus a chain
+	// of symlinks (libggml.so.0 -> libggml.so.0.26.0). whisper-cli is linked
+	// against the *symlink* names, so skipping them leaves it unable to
+	// start. Links are collected and created after the files they point at.
+	links := map[string]string{} // link name -> target, both bare filenames
 	found := false
 	for {
 		hdr, err := tr.Next()
@@ -785,22 +873,35 @@ func extractTarGzEngine(tarGzPath, destDir, binName string) error {
 		if err != nil {
 			return err
 		}
-		if hdr.Typeflag != tar.TypeReg {
-			continue
-		}
 		base := filepath.Base(hdr.Name)
 		if base != binName && !isEngineLibrary(base) {
 			continue
 		}
-		if err := writeExtractedFile(filepath.Join(destDir, base), tr); err != nil {
-			return err
-		}
-		if base == binName {
-			found = true
+		switch hdr.Typeflag {
+		case tar.TypeReg:
+			if err := writeExtractedFile(filepath.Join(destDir, base), tr); err != nil {
+				return err
+			}
+			if base == binName {
+				found = true
+			}
+		case tar.TypeSymlink:
+			// Only links to a sibling file are honoured — a target with any
+			// path component could point outside destDir.
+			if hdr.Linkname == filepath.Base(hdr.Linkname) && hdr.Linkname != "." && hdr.Linkname != ".." {
+				links[base] = hdr.Linkname
+			}
 		}
 	}
 	if !found {
 		return fmt.Errorf("%s not found in archive", binName)
+	}
+	for name, target := range links {
+		linkPath := filepath.Join(destDir, name)
+		os.Remove(linkPath) // replace whatever a previous install left behind
+		if err := os.Symlink(target, linkPath); err != nil {
+			return fmt.Errorf("link %s -> %s: %w", name, target, err)
+		}
 	}
 	return nil
 }

@@ -19,6 +19,28 @@ func TestPlainFailureMessagePreservesWhisperCliText(t *testing.T) {
 	}
 }
 
+func TestPlainFailureMessageNamesMissingOpenMPPackage(t *testing.T) {
+	// Verbatim loader output from the prebuilt engine on a stock Ubuntu 22.04
+	// image without libgomp1.
+	stderr := "/eng/whisper-cli: error while loading shared libraries: libgomp.so.1: cannot open shared object file: No such file or directory"
+	got := plainFailureMessage(127, stderr)
+	if !strings.HasPrefix(got, stderr) {
+		t.Errorf("original loader error must be kept verbatim at the start: %q", got)
+	}
+	for _, want := range []string{"apt install libgomp1", "dnf install libgomp"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("message missing %q: %q", want, got)
+		}
+	}
+}
+
+func TestPlainFailureMessageNamesOtherMissingLibrary(t *testing.T) {
+	got := plainFailureMessage(127, "whisper-cli: error while loading shared libraries: libfoo.so.3: cannot open shared object file: No such file or directory")
+	if !strings.Contains(got, "libfoo.so.3 is missing") || strings.Contains(got, "libgomp") {
+		t.Errorf("want a generic hint naming libfoo.so.3, got %q", got)
+	}
+}
+
 func TestPlainFailureMessageHandlesEmptyStderr(t *testing.T) {
 	got := plainFailureMessage(2, "")
 	if got == "" {

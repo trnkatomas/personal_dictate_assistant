@@ -33,6 +33,7 @@ type Settings struct {
 type App struct {
 	ctx            context.Context
 	downloadCancel context.CancelFunc
+	recorder       nativeRecorder // Linux-only ffmpeg capture, see recorder.go
 }
 
 // NewApp creates a new App application struct
@@ -43,6 +44,12 @@ func NewApp() *App {
 // startup is called when the app starts. The context is saved so we can call runtime methods.
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+}
+
+// shutdown is called when the app is closing. A recording still in flight
+// would otherwise leave its ffmpeg process capturing the microphone.
+func (a *App) shutdown(ctx context.Context) {
+	a.CancelRecording()
 }
 
 // Transcribe decodes base64 audio and sends it to the configured Whisper backend.

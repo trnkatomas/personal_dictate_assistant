@@ -4,9 +4,13 @@ import {main} from '../models';
 
 export function CancelDownload():Promise<void>;
 
+export function CancelRecording():Promise<void>;
+
 export function GetSetupState():Promise<main.SetupState>;
 
 export function GetSystemInfo():Promise<main.SystemInfo>;
+
+export function GetVulkanBuildInfo():Promise<main.VulkanBuildInfo>;
 
 export function LoadSettings():Promise<main.Settings>;
 
@@ -18,8 +22,14 @@ export function Refine(arg1:string,arg2:main.Settings):Promise<string>;
 
 export function SaveSettings(arg1:main.Settings):Promise<void>;
 
-export function StartDownload(arg1:string):Promise<void>;
+export function StartDownload(arg1:string,arg2:string):Promise<void>;
+
+export function StartRecording():Promise<void>;
+
+export function StopRecording(arg1:main.Settings):Promise<string>;
 
 export function Transcribe(arg1:string,arg2:string,arg3:main.Settings):Promise<string>;
 
 export function TranscribeFileAtPath(arg1:string,arg2:main.Settings):Promise<string>;
+
+export function UsesNativeRecorder():Promise<boolean>;

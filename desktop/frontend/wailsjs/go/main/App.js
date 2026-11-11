@@ -6,12 +6,20 @@ export function CancelDownload() {
   return window['go']['main']['App']['CancelDownload']();
 }
 
+export function CancelRecording() {
+  return window['go']['main']['App']['CancelRecording']();
+}
+
 export function GetSetupState() {
   return window['go']['main']['App']['GetSetupState']();
 }
 
 export function GetSystemInfo() {
   return window['go']['main']['App']['GetSystemInfo']();
+}
+
+export function GetVulkanBuildInfo() {
+  return window['go']['main']['App']['GetVulkanBuildInfo']();
 }
 
 export function LoadSettings() {
@@ -34,8 +42,16 @@ export function SaveSettings(arg1) {
   return window['go']['main']['App']['SaveSettings'](arg1);
 }
 
-export function StartDownload(arg1) {
-  return window['go']['main']['App']['StartDownload'](arg1);
+export function StartDownload(arg1, arg2) {
+  return window['go']['main']['App']['StartDownload'](arg1, arg2);
+}
+
+export function StartRecording() {
+  return window['go']['main']['App']['StartRecording']();
+}
+
+export function StopRecording(arg1) {
+  return window['go']['main']['App']['StopRecording'](arg1);
 }
 
 export function Transcribe(arg1, arg2, arg3) {
@@ -44,4 +60,8 @@ export function Transcribe(arg1, arg2, arg3) {
 
 export function TranscribeFileAtPath(arg1, arg2) {
   return window['go']['main']['App']['TranscribeFileAtPath'](arg1, arg2);
+}
+
+export function UsesNativeRecorder() {
+  return window['go']['main']['App']['UsesNativeRecorder']();
 }

@@ -77,6 +77,16 @@ export default {
     },
     recommended: 'Recommended',
     downloadNote: 'Download includes the whisper-cli engine and the selected model.',
+    downloadNoteVulkan: 'Downloads the whisper.cpp source and the selected model, then compiles the engine on this computer (a few minutes).',
+    engineTitle: 'Transcription engine',
+    enginePrebuilt: 'Prebuilt (CPU)',
+    enginePrebuiltDesc: 'Ready-made engine from whisper.cpp — quick to install, runs on the processor.',
+    engineVulkan: 'Build with Vulkan GPU support',
+    engineVulkanDesc: 'Compiles whisper.cpp on this computer so it can use your graphics card (AMD, Intel or NVIDIA). Much faster transcription; falls back to the prebuilt engine if the build does not work with your driver.',
+    engineVulkanMissing: (missing) => `Needs build tools that aren't installed: ${missing}. Install them, then check again:`,
+    engineRecheck: 'Check again',
+    engineVulkanSoftwareOnly: 'No graphics card with a Vulkan driver was found — only a software renderer. ' +
+      'A build would run on the processor, no faster than the prebuilt engine. Installing your GPU\'s Vulkan driver usually fixes this.',
     back: 'Back',
     downloadInstall: 'Download & install',
     starting: 'Starting…',
@@ -94,6 +104,10 @@ export default {
 
   recorder: {
     micDenied: (message) => `Microphone access denied: ${message}`,
+    nativeStartFailed: (message) => `Could not start recording: ${message}`,
+    nativeIdle: 'Ready to record',
+    nativeStarting: 'Connecting to microphone…',
+    recordingElapsed: (time) => `Recording… ${time}`,
     stopTitle: 'Stop recording (Space)',
     startTitle: 'Start recording (Space)',
     stop: 'Stop',
