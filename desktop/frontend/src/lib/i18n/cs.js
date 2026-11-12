@@ -63,6 +63,16 @@ export default {
     getStarted: 'Začít',
     skipSetup: 'Vím, co dělám — přeskočit nastavení',
     chooseModel: 'Vyberte model',
+    downloadNoteVulkan: 'Stáhne zdrojový kód whisper.cpp a vybraný model a poté engine zkompiluje na tomto počítači (několik minut).',
+    engineTitle: 'Přepisovací engine',
+    enginePrebuilt: 'Předpřipravený (CPU)',
+    enginePrebuiltDesc: 'Hotový engine z whisper.cpp — rychlá instalace, běží na procesoru.',
+    engineVulkan: 'Sestavit s podporou GPU (Vulkan)',
+    engineVulkanDesc: 'Zkompiluje whisper.cpp na tomto počítači, aby mohl využít grafickou kartu (AMD, Intel nebo NVIDIA). Výrazně rychlejší přepis; pokud sestavení s vaším ovladačem nefunguje, použije se předpřipravený engine.',
+    engineVulkanMissing: (missing) => `Chybí nástroje pro sestavení: ${missing}. Nainstalujte je a zkontrolujte znovu:`,
+    engineRecheck: 'Zkontrolovat znovu',
+    engineVulkanSoftwareOnly: 'Nebyla nalezena grafická karta s ovladačem Vulkan — jen softwarový renderer. ' +
+      'Sestavení by běželo na procesoru, ne rychleji než předpřipravený engine. Obvykle pomůže nainstalovat ovladač Vulkan pro vaši GPU.',
     gpuAppleSilicon: 'Apple Silicon',
     gpuCuda: 'NVIDIA GPU (CUDA)',
     gpuCpu: 'Pouze CPU',
@@ -93,6 +103,10 @@ export default {
 
   recorder: {
     micDenied: (message) => `Přístup k mikrofonu odepřen: ${message}`,
+    nativeStartFailed: (message) => `Nahrávání se nepodařilo spustit: ${message}`,
+    nativeIdle: 'Připraveno k nahrávání',
+    nativeStarting: 'Připojování k mikrofonu…',
+    recordingElapsed: (time) => `Nahrávání… ${time}`,
     stopTitle: 'Zastavit nahrávání (mezerník)',
     startTitle: 'Spustit nahrávání (mezerník)',
     stop: 'Stop',

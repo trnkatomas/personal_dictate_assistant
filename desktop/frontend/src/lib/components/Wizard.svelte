@@ -1,7 +1,7 @@
 <script>
   import { createEventDispatcher, onDestroy, onMount } from 'svelte';
   import { EventsOn, EventsOff } from '../../../wailsjs/runtime/runtime';
-  import { GetSystemInfo, StartDownload, CancelDownload } from '../../../wailsjs/go/main/App';
+  import { GetSystemInfo, StartDownload, CancelDownload, GetVulkanBuildInfo } from '../../../wailsjs/go/main/App';
   import { settings, initSettings } from '$lib/stores.js';
   import { t } from '$lib/i18n';
 
@@ -14,6 +14,19 @@
   let systemInfo = null;
   let recommendedModel = '';  // model ID to highlight with a badge
   let selectedModel = 'large-v3-turbo';
+
+  // Step 2 (Linux only) — engine choice: prebuilt CPU download, or build
+  // whisper-cli from source with Vulkan GPU support (desktop/vulkan_build.go).
+  let vulkanInfo = null;      // null until checked; .supported is false off Linux
+  let engine = '';            // '' = prebuilt, 'vulkan' = build from source
+  let checkingVulkan = false;
+
+  async function refreshVulkanInfo() {
+    checkingVulkan = true;
+    try { vulkanInfo = await GetVulkanBuildInfo(); } catch (_) { vulkanInfo = null; }
+    checkingVulkan = false;
+    if (engine === 'vulkan' && !vulkanInfo?.ready) engine = '';
+  }
 
   // Step 3 — download progress
   let downloadLabel = $t.wizard.starting;
@@ -51,6 +64,7 @@
 
   // Pre-fetch system info while the user reads the welcome screen
   onMount(async () => {
+    refreshVulkanInfo();
     try {
       systemInfo = await GetSystemInfo();
     } catch (_) {
@@ -88,7 +102,9 @@
       downloadPercent = progress.percent;
     });
 
-    await StartDownload(selectedModel);
+    // Second argument is the engine: '' = default prebuilt/Homebrew engine,
+    // 'vulkan' = build from source with Vulkan (Linux; UI for it not wired yet).
+    await StartDownload(selectedModel, engine);
   }
 
   async function onDownloadDone() {
@@ -167,8 +183,39 @@
           {/each}
         </div>
 
+        {#if vulkanInfo?.supported}
+          <div class="engine-choice">
+            <span class="engine-title">{$t.wizard.engineTitle}</span>
+            <label class="model-option" class:selected={engine === ''}>
+              <input type="radio" name="engine" value="" bind:group={engine} />
+              <div class="model-info"><span class="model-label">{$t.wizard.enginePrebuilt}</span></div>
+              <span class="model-desc">{$t.wizard.enginePrebuiltDesc}</span>
+            </label>
+            <label class="model-option" class:selected={engine === 'vulkan'} class:disabled={!vulkanInfo.ready}>
+              <input type="radio" name="engine" value="vulkan" bind:group={engine} disabled={!vulkanInfo.ready} />
+              <div class="model-info">
+                <span class="model-label">{$t.wizard.engineVulkan}</span>
+                {#if vulkanInfo.device}<span class="model-size">{vulkanInfo.device}</span>{/if}
+              </div>
+              <span class="model-desc">{$t.wizard.engineVulkanDesc}</span>
+              {#if vulkanInfo.softwareOnly}
+                <div class="engine-missing">{$t.wizard.engineVulkanSoftwareOnly}</div>
+              {/if}
+              {#if !vulkanInfo.ready}
+                <div class="engine-missing">
+                  {$t.wizard.engineVulkanMissing(vulkanInfo.missing.join(', '))}
+                  {#if vulkanInfo.installHint}<code>{vulkanInfo.installHint}</code>{/if}
+                  <button type="button" class="recheck-btn" on:click|preventDefault={refreshVulkanInfo} disabled={checkingVulkan}>
+                    {$t.wizard.engineRecheck}
+                  </button>
+                </div>
+              {/if}
+            </label>
+          </div>
+        {/if}
+
         <p class="download-note">
-          {$t.wizard.downloadNote}
+          {engine === 'vulkan' ? $t.wizard.downloadNoteVulkan : $t.wizard.downloadNote}
         </p>
 
         <div class="step-actions">
@@ -353,6 +400,55 @@
     color: #64748b;
     grid-column: 2;
   }
+
+  .engine-choice {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+
+  .engine-title {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #64748b;
+  }
+
+  .model-option.disabled { opacity: 0.75; cursor: default; }
+
+  .engine-missing {
+    grid-column: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35rem;
+    margin-top: 0.3rem;
+    font-size: 0.75rem;
+    color: #fbbf24;
+  }
+
+  .engine-missing code {
+    background: #0a0f1a;
+    border: 1px solid #334155;
+    border-radius: 4px;
+    padding: 0.2rem 0.45rem;
+    color: #e2e8f0;
+    user-select: all;
+    word-break: break-all;
+  }
+
+  .recheck-btn {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    color: #94a3b8;
+    font-size: 0.72rem;
+    padding: 0.2rem 0.6rem;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .recheck-btn:disabled { opacity: 0.5; cursor: default; }
 
   .download-note {
     margin: 0;

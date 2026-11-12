@@ -29,6 +29,7 @@ func main() {
 		},
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
 		OnStartup:        app.startup,
+		OnShutdown:       app.shutdown,
 		// Native OS drag-and-drop delivers real file paths to Go directly,
 		// instead of reading the file into JS and shipping it across the
 		// JS↔Go bridge as a base64 string (which silently truncates for

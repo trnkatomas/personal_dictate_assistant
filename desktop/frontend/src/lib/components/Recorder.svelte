@@ -2,6 +2,7 @@
   import { createEventDispatcher, onDestroy, onMount } from 'svelte';
   import { isRecording } from '$lib/stores.js';
   import { t } from '$lib/i18n';
+  import { UsesNativeRecorder, StartRecording, CancelRecording } from '../../../wailsjs/go/main/App';
 
   const dispatch = createEventDispatcher();
 
@@ -14,12 +15,21 @@
   let chunks      = [];
   let startedAt   = 0;
 
+  // On Linux the webview can't record (see desktop/recorder.go): the Go side
+  // captures with ffmpeg instead, and there's no audio stream here to draw a
+  // waveform from — just an elapsed-time indicator.
+  let native      = false;
+  let elapsed     = 0;
+  let elapsedTimer = null;
+  $: elapsedLabel = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`;
+
   // ── Canvas sizing ──────────────────────────────────────────────
   // ResizeObserver fires once the element actually has non-zero dimensions,
   // which is more reliable than relying on onMount timing in WKWebView.
   let canvasObserver;
 
   onMount(() => {
+    UsesNativeRecorder().then((v) => { native = v; }).catch(() => {});
     canvasObserver = new ResizeObserver(() => fitCanvas());
     canvasObserver.observe(canvas);
     window.addEventListener('resize', fitCanvas);
@@ -41,7 +51,37 @@
   }
 
   // ── Recording ──────────────────────────────────────────────────
+  // StartRecording waits ~0.6 s to confirm ffmpeg is actually capturing;
+  // ignore further Record clicks / Space presses until it answers.
+  let nativeStarting = false;
+
+  async function startNative() {
+    if (nativeStarting) return;
+    nativeStarting = true;
+    try {
+      await StartRecording();
+    } catch (e) {
+      alert($t.recorder.nativeStartFailed(e?.message ?? String(e)));
+      return;
+    } finally {
+      nativeStarting = false;
+    }
+    startedAt = Date.now();
+    elapsed = 0;
+    elapsedTimer = setInterval(() => { elapsed = Math.floor((Date.now() - startedAt) / 1000); }, 250);
+    isRecording.set(true);
+  }
+
+  function stopNative() {
+    clearInterval(elapsedTimer);
+    elapsedTimer = null;
+    isRecording.set(false);
+    // The Go side still holds the capture; App.svelte stops it and transcribes.
+    dispatch('nativeStopped', { durationSeconds: (Date.now() - startedAt) / 1000 });
+  }
+
   async function start() {
+    if (native) return startNative();
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
     } catch (e) {
@@ -73,6 +113,7 @@
   }
 
   function stop() {
+    if (native) return stopNative();
     if (recorder?.state !== 'inactive') recorder.stop();
     isRecording.set(false);
     cancelAnimationFrame(animFrame);
@@ -142,6 +183,11 @@
   }
 
   onDestroy(() => {
+    if (native && $isRecording) {
+      clearInterval(elapsedTimer);
+      isRecording.set(false);
+      CancelRecording();
+    }
     cancelAnimationFrame(animFrame);
     if (recorder?.state !== 'inactive') recorder?.stop();
     cleanup();
@@ -149,7 +195,18 @@
 </script>
 
 <div class="recorder">
-  <canvas bind:this={canvas} class="waveform"></canvas>
+  <canvas bind:this={canvas} class="waveform" class:hidden={native}></canvas>
+  {#if native}
+    <div class="native-status" class:active={$isRecording}>
+      {#if $isRecording}
+        <span class="rec-dot"></span>{$t.recorder.recordingElapsed(elapsedLabel)}
+      {:else if nativeStarting}
+        {$t.recorder.nativeStarting}
+      {:else}
+        {$t.recorder.nativeIdle}
+      {/if}
+    </div>
+  {/if}
 
   <button
     class="record-btn"
@@ -183,6 +240,37 @@
     border: 1px solid #1e293b;
     border-radius: 8px;
     display: block;
+  }
+
+  .waveform.hidden { display: none; }
+
+  .native-status {
+    width: 100%;
+    height: 72px;
+    background: #0a0f1a;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: #475569;
+    font-variant-numeric: tabular-nums;
+  }
+  .native-status.active { color: #fca5a5; }
+
+  .rec-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #dc2626;
+    animation: blink 1s ease-in-out infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.3; }
   }
 
   .record-btn {

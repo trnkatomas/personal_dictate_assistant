@@ -62,6 +62,33 @@ The first time you launch the app, a wizard walks through:
 > silently retries with the next one — no action needed, and it only
 > happens once per machine.
 
+> **Linux requirements:** the prebuilt engine needs glibc 2.34 or newer
+> (Ubuntu 22.04+, Debian 12+, Fedora 35+) and the GNU OpenMP runtime
+> (`libgomp1` on Debian/Ubuntu, `libgomp` on Fedora) — usually already
+> present on a desktop install; if it isn't, the first transcription says
+> so and names the package. The prebuilt Linux engine is CPU-only:
+> whisper.cpp doesn't publish a CUDA or Vulkan build for Linux.
+
+> **GPU acceleration on Linux (Vulkan):** the wizard's *Transcription
+> engine* choice can instead build whisper.cpp from source with Vulkan
+> support, which uses AMD, Intel and NVIDIA graphics cards. It needs
+> `cmake`, `make`, a C++ compiler, `glslc`, the Vulkan headers and
+> SPIRV-Headers, with Vulkan headers 1.3.272 or newer (Ubuntu 24.04+ and
+> Debian 13+ qualify; Ubuntu 22.04 and Debian 12 ship older ones) — the
+> wizard lists whatever is missing and suggests an install command (e.g.
+> `sudo apt install build-essential cmake libvulkan-dev glslc spirv-headers`), plus a
+> working Vulkan driver (if only a software renderer is found, the wizard
+> warns that the build would run on the processor). Building takes a few
+> minutes. Afterwards a short
+> test transcription runs; if the build doesn't work with your driver, the
+> app falls back to the prebuilt CPU engine automatically.
+
+> **Microphone on Linux:** the Linux webview (WebKitGTK, as used by Wails
+> v2) refuses microphone access, so on Linux the app records through
+> `ffmpeg` instead (PulseAudio/PipeWire, falling back to ALSA). Recording
+> works the same way, but shows an elapsed-time indicator instead of the
+> live waveform.
+
 > **ffmpeg on Windows/Linux:** the wizard doesn't install `ffmpeg` for you
 > on these platforms (no Homebrew equivalent assumed). If it's missing,
 > transcription will show an install hint — `winget install ffmpeg` on
